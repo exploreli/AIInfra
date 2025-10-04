@@ -2,9 +2,11 @@
 
 # 01. 容器隔离从进程到命名空间(DONE)
 
-Author by: 张柯帆，ZOMI
+> Author by: 张柯帆，ZOMI
 
 容器技术的隔离本质，其核心在于利用 Linux 内核的 **Namespace** 和 **Cgroups** 两大机制。其中，Namespace 是实现“视图隔离”的关键——它让进程“误以为”自己独占了系统资源（如进程树、网络栈、文件系统），而这一切的前提，是理解“进程”这个操作系统最基本的资源载体。本文将从进程原理切入，深入剖析 Namespace 的内核逻辑，最终串联起两者如何协同构建容器的隔离边界。
+
+![](./images/01Container04.png)
 
 ## 1. 容器的出现
 
@@ -51,12 +53,12 @@ $ docker run "我的镜像"
 struct task_struct {
     unsigned int        __state;  // 进程状态（如运行、睡眠、僵死）
     void                *stack;   // 进程内核栈地址
-    pid_t               pid;      // 全局进程ID（宿主机可见）
-    pid_t               tgid;     // 线程组ID（进程组的标识）
+    pid_t               pid;      // 全局进程 ID（宿主机可见）
+    pid_t               tgid;     // 线程组 ID（进程组的标识）
     struct mm_struct    *mm;      // 内存描述符（管理进程虚拟内存）
     struct fs_struct    *fs;      // 文件系统信息（当前工作目录、根目录）
     struct files_struct *files;   // 打开的文件表（记录文件描述符）
-    struct nsproxy      *nsproxy; // Namespace代理（关键！指向进程所属的所有Namespace）
+    struct nsproxy      *nsproxy; // Namespace 代理（关键！指向进程所属的所有 Namespace）
     struct signal_struct *signal; // 信号处理信息
     ...
 };
