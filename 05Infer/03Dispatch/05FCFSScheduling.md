@@ -10,11 +10,9 @@
 
 ### FCFS的定义与直观理解
 
-- **定义**：按请求的**到达时间**排序，先到的请求优先被调度。顾名思义，先来后到，每次从就绪队列选择最先进入队列的进程，然后一直运行，直到进程退出或被阻塞，才会继续从队列中选择第一个进程接着运行。这似乎很公平，但是当一个长作业先运行了，那么后面的短作业等待的时间就会很长，不利于短作业。
-- **直观理解**：将 API 服务视为超市收银台——谁先排队，谁先结账。其特点是**公平、可解释、易于观测**。
+- **定义**：按请求的**到达时间**排序，先到的请求优先被调度。顾名思义，先来后到，每次从就绪队列选择最先进入队列的进程，然后一直运行，直到进程退出或被阻塞，才会继续从队列中选择第一个进程接着运行。这似乎很公平，但是当一个长作业先运行了，那么后面的短作业等待的时间就会很长，不利于短作业[1]。FCFS很像一个超市收银台——谁先排队，谁先结账。但是假如一个顾客购买的商品很多，那么后面排队的人即使买的物品很少也不得不等待，直到这名顾客结账完毕。
 
 ![FCFS直觉图](./images/05FCFSScheduling01.png)
-[http://interview.wzcu.com/System/%E8%B0%83%E5%BA%A6%E7%AE%97%E6%B3%95.html]
 
 ### FCFS 调度在大模型推理中的位置
 
@@ -49,7 +47,7 @@
 * 当多个请求堆在队列里时，**谁先到达，就先被调度进批次**。
 * 在 **连续批处理（Continuous Batching）** 的迭代循环中，调度器会优先续跑已有的解码任务，然后再按照 **FCFS 顺序**补入新的预填充任务。
 
-### 与连续批处理(continuous batching)的契合
+### 与连续批处理(continuous batching)的契合[2]
 
 现代推理服务采用 **迭代级调度（iteration-level scheduling）**：每个调度周期，调度器会组装一个**混合批次**（包含正在解码的序列 + 新到达或分块的预填充请求），并提交执行。在此机制下，FCFS 扮演的是**补位规则**：
 
@@ -61,7 +59,7 @@
 
 #### 优点
 
-1. **简单易实现**：算法复杂度极低，工程上几乎“零成本”落地，也不需要额外的请求特征估计（如上下文长度、剩余解码步数）。
+1. **简单易实现**：算法复杂度极低，工程上几乎“零成本”落地，也不需要额外的请求特征估计（如上下文长度、剩余解码步数[2]）。
 
 2. **公平性好**：严格按照到达时间排队，保证了用户层面直观的“谁先来谁先算”，不会出现长请求starvation的情况。
 
@@ -72,37 +70,83 @@
 #### 缺点
 1. **无法感知任务长度**
 
-* FCFS 完全不考虑请求的 **上下文长度** 或 **目标输出长度**。如果队列前面有一个超长请求，它的 Prefill 阶段可能要消耗大量时间和显存。后面的一批短请求只能干等着，即使它们几乎可以“秒出结果”。
-
-2. **吞吐与延迟的平衡受限**
-
-* FCFS 追求的是“公平”，但并不保证 **端到端延迟的最优**。在负载不均衡的情况下，整体吞吐率可能没问题，但尾部延迟（P95/P99）会飙升。
-
-3. **资源利用率不稳定**
-
-* Prefill 和 Decode 的负载模式差异很大（算力 vs 内存）。如果 FCFS 把几个“大 Prefill”任务排在一起，就可能导致 GPU 在 Decode 端产生资源浪费。
-
-4. **对服务策略不敏感**
-
-* 在一些场景，用户请求的重要性并不一样：比如「付费用户」 vs 「免费用户」，「实时对话」 vs 「批量处理」。但 FCFS 不区分优先级，所有请求一视同仁。这会让系统缺乏灵活性，无法满足不同业务线的服务等级需求。
-
-5. **极端情况下延迟爆炸**
-
-* 当负载中存在极长的上下文输入时（例如几万 token），队列后面的短请求都会被“绑架”导致无法执行。这种情况被称为 **Head-of-line blocking（队首阻塞）**，在 LLM 推理里尤其常见，因为输入长度分布差异极大。
+* FCFS 完全不考虑请求的 **上下文长度** 或 **目标输出长度**。如果队列前面有一个超长请求，后面的一批短请求只能干等着，即使它们可以很快的输出结果，因为这个超长请求的 Prefill 阶段可能要消耗大量时间和显存。这种情况被称为 **Head-of-line blocking（队首阻塞）**，在 LLM 推理里尤其常见，因为输入长度分布差异极大[3]。
 
 ![Head-of-line blocking](./images/05FCFSScheduling02.png)
 
-###
+2. **吞吐与延迟的平衡受限**
+
+* FCFS 追求的是“公平”，但并不保证整个推理系统的 **端到端延迟的最优**。在负载不均衡的情况下，整体吞吐率可能没问题，但尾部延迟（P95/P99）会飙升[8]。
+
+3. **资源利用率不稳定**
+
+* Prefill 和 Decode 的负载模式差异很大（算力 vs 内存）。如果 FCFS 把几个“大 Prefill”任务排在一起，就可能导致 GPU 在 Decode 端产生资源浪费[3]。
+
+4. **对服务策略不敏感**
+
+* 在一些场景，用户请求的重要性并不一样：比如「付费用户」 vs 「免费用户」，「实时对话」 vs 「批量处理」。但 FCFS 不区分优先级，所有请求一视同仁。这会让系统缺乏灵活性，无法满足不同业务线的服务等级需求[4]。
+
 ---
-!!!!!!
-FCFS有局限性，所以可以引出 HoL blocking调度。
-调度策略的整体分类和演进，简单介绍其他调度策略。
+
+### 推理调度策略的演进路径
+
+从上文中不难看出，fcfs作为默认的调度策略有着一些局限性，所以其他调度策略也有广泛的运用空间[5]。
+
+
+### 长度感知调度 (Length-Aware)
+
+在大模型推理服务中，一个常见的问题是：一个很长的请求排在队列前面，后面一堆短请求只能干等着——这就是所谓的“队首阻塞”（Head-of-Line blocking）。为了解决这个问题，很多系统会尝试“看一眼”请求大概有多长，然后优先处理那些短小精悍的任务。
+
+具体怎么做呢？一种思路是借鉴操作系统里的“最短作业优先”（SJF）或者“剩余时间最短优先”（SRPT）策略——谁快做完就先让谁上。但问题来了：我们往往没法提前知道一个请求到底会生成多少个 token。这时候，像 LAS（Least Attained Service）这样的方法就更实用：它不依赖准确的长度预测，而是看哪个请求“被服务得最少”，就优先照顾它，这样在长度不确定的情况下反而更稳。
+
+那长度信息从哪来？其实有不少线索可用。比如用户输入的 prompt 有多长、设置了最大生成多少 token、已经解码了多少内容，甚至可以根据历史解码速度做个粗略估计。更聪明的做法还包括：根据任务类型（比如问答 vs. 写作）、停用词设置、温度参数等，用一个小模型快速猜一下输出长度,并且把这个参数输出给调度器。
+
+工程上，通常会把请求按预估长度分到不同的“桶”里，短桶优先处理。但也不能让长请求永远等下去，所以还得加上“老化”机制——等得越久，优先级就慢慢提上来。另外，对那些特别长的请求（比如批量生成几千字），最好单独限流或者走离线通道，别挤占在线服务的资源。
+
+当然，如果长度估计偏差太大，这套机制反而可能适得其反，比如把一个实际很长的请求误判为短任务，结果它卡在中间拖慢整个系统的速度。
+
+---
+
+### Token 级公平调度（Token-Level Fairness）
+
+大模型生成文本不是一气呵成的，而是一步一步吐 token 的。每一步（step）都需要 GPU 算力和显存（尤其是 KV Cache）的支持。既然每一步都有一个“token 预算”，那为什么不把这笔预算公平地分给所有正在处理的请求呢？这就是 token 级公平调度的核心想法：在每一个解码 step 里，不让某个长对话“吃独食”，而是确保每个活跃请求至少能往前走一步。比如，先给每个请求分配 1 个 token 的“保底额度”，剩下的预算再按需分配。有些系统还会用“token 积分”机制——这一步没轮到你？没关系，下一轮优先补上。为了避免某个请求在单个 step 里狂吞几十个 token，通常还会设个上限。这样一来，短请求能更快完成并退出队列，新来的请求也能及时插进来，队首阻塞的问题自然就缓解了。
+
+不过这种细粒度调度也有代价。系统需要频繁切换上下文，对 KV Cache 的管理要求更高，得靠 Paged Attention 这类技术来支撑高并发。而且调度逻辑变复杂了，如果切得太碎，GPU 内核启动和同步的开销反而会拖慢整体性能。所以得在“公平”和“效率”之间找平衡。顺便提一句，prefill（输入编码）和 decode（逐 token 生成）的资源需求很不一样：prefill 吃算力，decode 吃显存。把它们拆成两个独立的调度通道，能避免一个超长 prompt 的 prefill 把整个 decode 队列堵死。
+
+---
+
+### 优先级调度
+
+现实中的服务从来不是“人人平等”的。付费用户 vs. 免费用户、实时对话 vs. 后台批处理、A/B 实验中的高优组……这些场景天然需要不同的服务等级。这时候，调度器就得“看人下菜碟”了。最简单的做法是搞多个队列，高优先级的走快车道，低优先级的排队限流。更精细一点的，可以用加权公平队列（类似 WFQ 或 DRR）：高权重的请求每轮能分到更多 token，或者等待时间更短。
+
+当一个高优先级请求突然到来，也可以插个队，但最好别硬中断正在跑的请求（那样会清 KV Cache，代价太大），而是让它在下一个解码 step 里优先加入批处理——这叫“软抢占”。
+
+---
+
+### 混合调度
+
+现实中，单一调度策略很难应对所有场景。于是大家开始搞“混合调度”——把长度感知、优先级控制、token 级分配这些手段分层组合起来[2]。
+
+比如，在入口层先做一次粗筛：根据请求长度、优先级、是否是批处理等，决定它进哪个队列，甚至要不要拒掉。到了执行层，再用 token 级调度精细分配每一步的资源。prefill 和 decode 也最好分开调度，各自做批处理优化，互不干扰。更聪明的系统还会动态调整策略。比如，当显存快满了，就缩小批处理窗口；当队列里请求长度差异很大，就加快老化速度，防止短请求被饿死；如果 KV Cache 命中率高，说明上下文复用好，可以适当提高并发。这些调度策略还能和推理加速技术联动。比如用推测解码（Speculative Decoding）减少实际需要的 step 数；用分页 KV Cache 支撑更多并发；甚至根据缓存命中情况动态调优先级——命中率高的请求处理更快，整体吞吐也就上去了。最终目标，是在吞吐量、尾部延迟和资源成本之间动态找平衡，既能扛住白天的流量高峰，也能在深夜高效跑批处理任务。
+
+---
+
+### 队首阻塞 （HOL）的解决方案总结
+
+- 把请求按长度分桶，短的优先处理，同时用“老化”机制防止长请求被遗忘；
+- 把 prefill 和 decode 拆开调度，避免一个超长输入把整个系统卡住；
+- 每个解码 step 里，强制给所有活跃请求至少分配 1 个 token，让短请求能快速跑完；
+- 限制单个请求在单 step 里最多能拿多少 token，防止单点垄断；
+- 对特别长或批量型的请求，直接引导到离线通道，别跟在线请求抢资源；
+- 根据当前负载动态调整批处理大小——压力大时多合并，延迟敏感时少合并、快响应。
+
+这些方法单独用可能效果有限，但组合起来，往往能显著改善用户体验。。
 
 ## vLLM 中的 FCFS 调度策略
 
 ### 默认调度策略
 
-vLLM对请求的调度处理流程：
+vLLM对请求的调度处理流程[7]：
 
     当一堆请求来到vLLM服务器上时，按照First-Come-First-Serve（FCFS）原则，优先处理那些最早到来的请求。
     当gpu资源不足时，为了让先来的请求能尽快做完推理，vLLM会对那些后到来的请求执行“抢占”，即暂时终止它们的执行。
@@ -174,7 +218,7 @@ vLLM对请求的调度处理流程：
 3. **预算与座位的“硬性护栏”**
 
    - 合理设置 `max_num_batched_tokens` 和 `max_num_seqs`，防止单次预填充耗尽全部资源；
-   - 通过 KV 缓存高/低水位控制，**优先保障解码任务的稳定执行**。
+   - 通过 KV 缓存控制，**优先保障解码任务的稳定执行**。
 
 4. **轻量级优先级（温和改造）**
 
@@ -184,21 +228,7 @@ vLLM对请求的调度处理流程：
 
    - 采用混合/分页/压缩 KV 缓存技术，扩大并发容量，减少因缓存不足导致的请求排队膨胀。
 
-## 6. 何时切换策略：从 FCFS 到工作负载感知调度
-
-若满足以下任一条件，可有考虑升级调度策略：
-
-- **混合负载显著**：交互式请求与长文本生成/离线批处理共存，**尾部延迟上升、用户抱怨增多**。
-- **多租户需分级 SLO**：存在明确的金银铜用户或业务优先级，需要**差异化服务质量保障**。
-- **追求极致成本/吞吐**：需在高并发下进一步压缩资源空泡，提升 TPS。
-
-**可选演进方向（循序渐进）**：
-
-- **带权 FCFS / 优先级调度**：在保持到达公平的基础上引入**有限分层**。
-- **近似最短作业优先（SJF）或学习排序（LTR）**：基于长度或剩余步数预测，实现“短任务优先”。
-- **基于预估执行时间的可抢占调度**：在安全同步点进行**低成本抢占**，避免频繁上下文切换。
-
-### 可复用的 vLLM 配置模板
+### 可复用的 vLLM 配置模板[6]
 
 #### 低 TTFT（交互优先）
 
@@ -238,31 +268,18 @@ disable_hybrid_kv_cache_manager: false
 ```
 
 
-
-## 8. 与其他调度策略的对比
-
-| 维度             | FCFS                     | 带权/优先级         | 近似 SJF / LTR       | 可抢占（估时/细粒度）     |
-|------------------|--------------------------|--------------------|----------------------|--------------------------|
-| 到达公平性       | ★★★★★                    | ★★★★☆              | ★★☆☆☆                | 取决于具体实现           |
-| TTFT（交互体验） | ★★★★☆（配合分块）        | ★★★★☆              | ★★★★★                | ★★★★☆                    |
-| 稳定产出（TPOT） | ★★★★☆（解码优先）        | ★★★☆☆              | ★★★☆☆                | ★★★☆☆                    |
-| 实现复杂度       | ★★☆☆☆                    | ★★★☆☆              | ★★★★☆                | ★★★★★                    |
-| 适用场景         | 单业务/中等并发           | 多租户分层          | 混合负载显著          | 极致 SLO / 成本优化      |
-
-## 9. 总结与思考
-
-> **FCFS 是默认策略，不代表着保守和低性能**。在推理框架运用 **连续批处理** 时代，通过 **解码优先 + 适度分块预填充 + 预算与缓存水位控制** 的工程基线，FCFS 能同时兼顾**公平性、稳定性与效率**。但是当当混合负载和分级 SLO 的需求日益突出时，也可以考虑将FCFS**渐进式升级**到工作负载感知的调度策略以达到性能的最大优化。
-
 ## 参考与引用
 
+* [1] WZCU, “系统调度算法详解,” 2023. [Online]. Available: [http://interview.wzcu.com/System/%E8%B0%83%E5%BA%A6%E7%AE%97%E6%B3%95.html](http://interview.wzcu.com/System/%E8%B0%83%E5%BA%A6%E7%AE%97%E6%B3%95.html)  
+* [2] Hugging Face, “LLM performance: request queueing strategies,” Blog, 2024. [Online]. Available: [https://huggingface.co/blog/tngtech/llm-performance-request-queueing](https://huggingface.co/blog/tngtech/llm-performance-request-queueing)  
+* [3] Hugging Face, “LLM performance: prefill vs decode under concurrent requests,” Blog, 2024. [Online]. Available: [https://huggingface.co/blog/tngtech/llm-performance-prefill-decode-concurrent-requests](https://huggingface.co/blog/tngtech/llm-performance-prefill-decode-concurrent-requests)  
+* [4] Y. Yu et al., “Orca: A Distributed Serving System for Transformer-Based Generative Models,” OSDI, 2022. [Online]. Available: [https://www.usenix.org/conference/osdi22/presentation/yu](https://www.usenix.org/conference/osdi22/presentation/yu)  
+* [5] W. Kwon et al., “Efficient Memory Management for Large Language Model Serving with PagedAttention,” 2024. [Online]. Available: [https://arxiv.org/abs/2403.02310](https://arxiv.org/abs/2403.02310)  
+* [6] vLLM, “SchedulerConfig & Continuous Batching (source code, version-dependent),” 2024. [Online]. Available: [https://github.com/vllm-project/vllm](https://github.com/vllm-project/vllm) (see `vllm/core/scheduler`)  
+* [7] vLLM Community, “Is FCFS scheduling holding back vLLM’s performance in production?”, vLLM Forum, 2024. [Online]. Available: [https://discuss.vllm.ai/t/is-fcfs-scheduling-holding-back-vllms-performance-in-production/1584](https://discuss.vllm.ai/t/is-fcfs-scheduling-holding-back-vllms-performance-in-production/1584)  
+* [8] Databricks, “LLM Inference Performance Engineering Best Practices,” Blog, 2024. [Online]. Available: [https://www.databricks.com/blog/llm-inference-performance-engineering-best-practices](https://www.databricks.com/blog/llm-inference-performance-engineering-best-practices)
 
-!!!!!!!哪些地方引用了这些文章了？
-
-- [1] vLLM Community, “Is FCFS scheduling holding back vLLM’s performance in production?”, vLLM Forum, 2024. [Online]. Available: [https://discuss.vllm.ai/t/is-fcfs-scheduling-holding-back-vllms-performance-in-production/1584](https://discuss.vllm.ai/t/is-fcfs-scheduling-holding-back-vllms-performance-in-production/1584)
-- [2] Y. Yu et al., “Orca: A Distributed Serving System for Transformer-Based Generative Models,” OSDI, 2022. [Online]. Available: [https://www.usenix.org/conference/osdi22/presentation/yu](https://www.usenix.org/conference/osdi22/presentation/yu)
-- [3] W. Kwon et al., “Efficient Memory Management for Large Language Model Serving with PagedAttention,” 2024. [Online]. Available: [https://arxiv.org/abs/2403.02310](https://arxiv.org/abs/2403.02310)
-- [4] Hugging Face, “LLM performance: prefill vs decode under concurrent requests,” Blog, 2024. [Online]. Available: [https://huggingface.co/blog/tngtech/llm-performance-prefill-decode-concurrent-requests](https://huggingface.co/blog/tngtech/llm-performance-prefill-decode-concurrent-requests)
-- [5] Hugging Face, “LLM performance: request queueing strategies,” Blog, 2024. [Online]. Available: [https://huggingface.co/blog/tngtech/llm-performance-request-queueing](https://huggingface.co/blog/tngtech/llm-performance-request-queueing)
-- [6] Databricks, “LLM Inference Performance Engineering Best Practices,” Blog, 2024. [Online]. Available: [https://www.databricks.com/blog/llm-inference-performance-engineering-best-practices](https://www.databricks.com/blog/llm-inference-performance-engineering-best-practices)
-- [7] vLLM, “SchedulerConfig & Continuous Batching (source code, version-dependent),” 2024. [Online]. Available: [https://github.com/vllm-project/vllm](https://github.com/vllm-project/vllm) (see `vllm/core/scheduler`)
+---
 ```
+
+
