@@ -14,7 +14,7 @@
 - **计算中间结果**是动态生成的，在推理过程中，模型需要对输入数据进行多轮神经网络层的计算（如注意力层、激活函数层等），每一层计算都会生成大量中间结果（如注意力权重矩阵），当依赖该中间结果的计算完成后则释放这些中间结果的内存占用。  
 - **输入输出数据**的占比相对来说很小。
 
-我们以 **1B 参数的模型** 举例（1B 指 Billion，代表模型有 10 亿个参数），假设推理使用的数据类型是 **float16**，那么 1 个参数就占用 **2 Byte**，模型总大小为：$10^9 \times 2 / 2^{30} \approx 1.86\ \text{GB}$ 为了便于估算可以近似为 **2 GB**。
+我们以 **1B 参数的模型** 举例（1B 指 Billion，代表模型有 10 亿个参数），假设推理使用的数据类型是 **float16**，那么 1 个参数就占用 **2 Byte**，模型总大小为： $10^9 \times 2 / 2^{30} \approx 1.86\ \text{GB}$ 为了便于估算可以近似为 **2 GB**。
 
 以下代码展示了 GPT-2 模型参数的显存占用，在这里选取的是参数量最小的一个模型，如果想选其他模型，可以修改 `model_name` 为其他名称如 `gpt-medium` 或 `gpt-large`，可以查看 transformers 库中 `modeling_gpt2.py` 文件了解更多。
 
@@ -80,7 +80,7 @@ print(f"显存占用峰值: {memory_used:.2f} MB")
 
 ### 2.2 实例
 
-以下代码展示大模型自回归生成的过程。核心过程代码（21-28 行）将当前的 token 序列 `in_tokens` 输入到 GPT-2 模型中，模型返回每个位置对应的 logits 输出，然后选择出现概率最高的那个 token 作为下一个输出 token。新生成的 token 被拼接到原始序列的末尾，形成新的输入序列。
+以下代码展示大模型自回归生成的过程。核心过程代码将当前的 token 序列 `in_tokens` 输入到 GPT-2 模型中，模型返回每个位置对应的 logits 输出，然后选择出现概率最高的那个 token 作为下一个输出 token。新生成的 token 被拼接到原始序列的末尾，形成新的输入序列。
 
 ```python
 import torch
@@ -103,6 +103,7 @@ token_eos = torch.tensor([198])  # 行结束符号
 out_token = None
 i = 0
 
+# 核心过程代码
 with torch.no_grad():
     while out_token != token_eos:
         logits, _ = model(in_tokens)
@@ -135,7 +136,7 @@ print(f'Output: {out_text}')
 - **prefilling**：当输入第一个 prompt 时，模型会对 prompt 中的每个 token 进行处理，计算出对应的 Key 和 Value，并将这些 Key 和 Value 存储到 KV Cache 中。同时，模型会根据这些 Key 和 Value 以及 Query 生成第一个输出 token。  
 - **decoding**：在生成后续输出 token 时，模型首先会对前一个输出 token 进行处理，计算出对应的 Query。然后，模型会从 KV Cache 中读取之前存储的所有 Key 和 Value，与当前的 Query 进行注意力计算，得到注意力权重。最后，模型根据注意力权重对 Value 进行加权求和等操作生成新的输出 token。同时，新生成 token 对应的 Key 和 Value 会被追加到 KV Cache 中，为下一次生成 token 做好准备。
 
-以下图片展示了有 KV Cache 的推理过程，注意这里简化掉了 scale 和 softmax 操作。我们的目标是为了生成下一个 token，记为 $Token_i$。我们已经有的条件是以往生成的所有 $Token_0$ … $Token_{i-1}$。在没有 KV Cache 时，我们为了计算得到 $Token_i$，需要算出 $K_i$ 和 $V_i$（形状都是 `i × embed_size`），以及 $Q_i$（形状是 `1 × embed_size`）。但是 $K_{i-1}$ 和 $V_{i-1}$（形状是 `i-1 × embed_size`）在生成 $Token_{i-1}$ 时已经计算过。如果我们将这些计算结果存储起来，无需重新通过 $W_kX$、$WvX$ 计算，这就是 **KV Cache**。
+以下图片展示了有 KV Cache 的推理过程，注意这里简化掉了 scale 和 softmax 操作。我们的目标是为了生成下一个 token，记为 $Token_i$。我们已经有的条件是以往生成的所有 $Token_0$ … $Token_{i-1}$。在没有 KV Cache 时，我们为了计算得到 $Token_i$，需要算出 $K_i$ 和 $V_i$（形状都是 `i × embed_size`），以及 $Q_i$（形状是 `1 × embed_size`）。但是 $K_{i-1}$ 和 $V_{i-1}$（形状是 `i-1 × embed_size`）在生成 $Token_{i-1}$ 时已经计算过。如果我们将这些计算结果存储起来，无需重新通过 $W_kX$、 $W_vX$ 计算，这就是 **KV Cache**。
 
 ![](./images/06InferenceMemory04.png) 
 ![](./images/06InferenceMemory05.png) 
@@ -150,19 +151,13 @@ print(f'Output: {out_text}')
 - **layer_numbers**（有多少个 layer，layer 指 masked multihead attention、ffn 和残差连接的复合结构，记为 $l$）  
 - **d_model**（输出的维度，有时也用 hidden size 表示，记为 $d$）  
 - **head numbers**（multihead 中 head 的个数，记为 $h$）  
-- 单个 head 中 KV 的维度（也就是 3.1 图中的 $emb_size$）  
+- 单个 head 中 KV 的维度（也就是 3.1 图中的 $emb\_size$）  
 - 每个参数占用的字节大小为 $u$ 字节
 
-在本3.1 中，我们知道，输出一个 token，每个 self-attention 需要存储新增的 **K 向量** 和 **V 向量** 参数各 $embed_size$ 个，需要存储的参数量为 $2 × embed_size$，然后有 $h$ 个 head 的结果拼接在一起，所以参数量要再乘 $h$。此外，有 $l$ 个 layer，每个 layer 中都有一个 multihead attention 模块，所以参数量要再乘 $l$。最多要输出 $s$ 个 token，这种情况需要参数量乘上 $s$。如果是批处理的情况，再乘上 $b$。每个参数占 $u$ 字节，所以最终 **KV Cache 的显存占用** 为：
+在3.1节中，我们知道，输出一个 token，每个 self-attention 需要存储新增的 **K 向量** 和 **V 向量** 参数各 $embed_size$ 个，需要存储的参数量为 $2 × embed_size$，然后有 $h$ 个 head 的结果拼接在一起，所以参数量要再乘 $h$。此外，有 $l$ 个 layer，每个 layer 中都有一个 multihead attention 模块，所以参数量要再乘 $l$。最多要输出 $s$ 个 token，这种情况需要参数量乘上 $s$。如果是批处理的情况，再乘上 $b$。每个参数占 $u$ 字节，所以最终 **KV Cache 的显存占用** 为： 
+$2 \times b \times s \times l \times h \times embed\_size \times u$ 
 
-$
-2 \times b \times s \times l \times h \times \text{embed\_size} \times u
-$
-
-因为一般情况 $d_model = h × embed_size$，所以显存占用可以表示为：
-$
-2bsldu\ \text{字节}
-$
+因为一般情况 $d\_model = h × embed\_size$，所以显存占用可以表示为： $2bsldu \text{字节}$ 
 
 在本书5.2.1 KV Cache原理一节也可以了解相关内容。
 
