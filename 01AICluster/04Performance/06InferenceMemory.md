@@ -126,7 +126,7 @@ print(f'Output: {out_text}')
 
 ## 3. KV Cache
 
-**KV Cache** 是自回归生成模型加速推理的常用技术。在 Transformer 模型进行自回归生成任务时，每次生成一个新 token，都需要基于当前输入序列重新计算整个注意力机制的 **Key 矩阵** 和 **Value 矩阵**（关于什么是 Key 和 Value 请了解 6.1.1 Transformer 架构）。但实际上，推理阶段 **Wk 和 Wv 矩阵不变**，因而前缀序列得到的 **Key 和 Value 也是不变的**，重新计算 Key 和 Value 会导致大量不必要的推理时间，尤其在长序列生成时，计算开销会显著增加。为了解决这个问题，**KV Cache** 技术应运而生。
+**KV Cache** 是自回归生成模型加速推理的常用技术。在 Transformer 模型进行自回归生成任务时，每次生成一个新 token，都需要基于当前输入序列重新计算整个注意力机制的 **Key 矩阵** 和 **Value 矩阵**（关于什么是 Key 和 Value 请了解本书 6.1.1 Transformer 架构）。但实际上，推理阶段 **Wk 和 Wv 矩阵不变**，因而前缀序列（2.1节中提到）得到的 **Key 和 Value 也是不变的**，重新计算 Key 和 Value 会导致大量不必要的推理时间，尤其在长序列生成时，计算开销会显著增加。为了解决这个问题，**KV Cache** 技术应运而生。
 
 ### 3.1 KV Cache 原理
 
@@ -153,7 +153,7 @@ print(f'Output: {out_text}')
 - 单个 head 中 KV 的维度（也就是 3.1 图中的 $emb_size$）  
 - 每个参数占用的字节大小为 $u$ 字节
 
-在 3.1 中，我们知道，输出一个 token，每个 self-attention 需要存储新增的 **K 向量** 和 **V 向量** 参数各 $embed_size$ 个，需要存储的参数量为 $2 × embed_size$，然后有 $h$ 个 head 的结果拼接在一起，所以参数量要再乘 $h$。此外，有 $l$ 个 layer，每个 layer 中都有一个 multihead attention 模块，所以参数量要再乘 $l$。最多要输出 $s$ 个 token，这种情况需要参数量乘上 $s$。如果是批处理的情况，再乘上 $b$。每个参数占 $u$ 字节，所以最终 **KV Cache 的显存占用** 为：
+在本3.1 中，我们知道，输出一个 token，每个 self-attention 需要存储新增的 **K 向量** 和 **V 向量** 参数各 $embed_size$ 个，需要存储的参数量为 $2 × embed_size$，然后有 $h$ 个 head 的结果拼接在一起，所以参数量要再乘 $h$。此外，有 $l$ 个 layer，每个 layer 中都有一个 multihead attention 模块，所以参数量要再乘 $l$。最多要输出 $s$ 个 token，这种情况需要参数量乘上 $s$。如果是批处理的情况，再乘上 $b$。每个参数占 $u$ 字节，所以最终 **KV Cache 的显存占用** 为：
 
 $
 2 \times b \times s \times l \times h \times \text{embed\_size} \times u
@@ -164,7 +164,7 @@ $
 2bsldu\ \text{字节}
 $
 
-在5.2.1 KV Cache原理一节也可以了解相关内容。
+在本书5.2.1 KV Cache原理一节也可以了解相关内容。
 
 ---
 
