@@ -4,7 +4,7 @@
 
 ## 1. 传统Attention痛点
 
-传统 Attention(MHA)，主要主要在时间复杂度 和显存占用 两个方面的瓶颈, 本文着 讲解 显存瓶颈 及解决办法, 下一篇则讲解时间复杂度的问题。
+传统 Attention(MHA)，主要主要在时间复杂度 和显存占用 两个方面的瓶颈, 本文着重讲解**显存瓶颈及解决办法**, 下一篇则讲解时间复杂度的问题。
 
 ### 时间复杂度
 
@@ -32,7 +32,7 @@ BF16精度下，每个参数占2字节. 以32B为例, 则权重部分显存占�
 ```math
 memory = 2 * <sequence_length> * <n_layers> * <d_model> * <precision_byte> * <batch_size>
 ```
-- 2: 值的是 key cache 和value cache两个
+- 2: 指的是 key cache 和value cache两个
 - sequence_length: 指序列长度
 - n_layers: 指 transformer layer(block)的层数
 - d_model: 指的是隐藏层维度, 在MHA场景下 = num_heads(头的个数) * head_dim(每个头的维度)
@@ -40,9 +40,9 @@ memory = 2 * <sequence_length> * <n_layers> * <d_model> * <precision_byte> * <ba
 - batch_size: 对应一次推理的batch数
 
 以常见使用及开源项目(Qwen系列)中配置, 计算显存占用:
-- 精度为bf16
-- transformer layers 数64 层
-- d_model为 5120为例
+- 精度: bf16
+- transformer layers: 64层
+- d_model: 5120
 - sequence_length: 2048
 
 
@@ -162,6 +162,7 @@ def multi_query_attention(X, num_heads, d_model):
 - 优点: 节省显存，KV Cache 降低为原始的 1/h，减少计算和通信开销，提升推理速度。
 - 缺点: 性能下降：KV Cache 压缩过于严重，影响模型训练稳定性和模型效果。
 
+
 ## 2. GQA (Grouped-Query Attention) 分组查询注意力
 
 ### 2.1 简介
@@ -268,6 +269,7 @@ def grouped_query_attention(X, num_heads, num_groups, d_model):
 - 缺点: 
    - 需人为合理设置组数 g
 
+
 ## 3. MLA (Multi-Latent Attention) 多潜在注意力
 
 ### 3.1 简介
@@ -289,38 +291,37 @@ Multi-Latent Attention (MLA) 是一种创新的注意力机制，它通过引入
 
 1. 计算代表 KV Cache的潜在向量
 
-[MLAStep1](./images/MLAstep1.png)
+![MLAStep1](./images/MLAstep1.png)
 
 `$𝑐_𝑡^𝐾𝑉$` 是在时间步 𝑡 计算的键值缓存潜在向量。 `$𝑊^𝐷𝐾𝑉$` 是一个权重矩阵，用于将隐藏状态 `$ℎ𝑡$` 映射到键值缓存空间，这一步可以通过神经网络映射得到。`$𝑐_𝑡^𝐾𝑉$`相对与原来的 `$ℎ𝑡$`  要小很多。
 
 2. 计算 Query, Key 和 value 潜在向量
 
-[MLAStep2](./images/MLAstep2.png)
+![MLAStep2](./images/MLAstep2.png)
 
 `$𝑘_𝑡^𝐶$` 是 Key 潜在向量，通过将  `$𝑐_𝑡^𝐾𝑉$` 与权重矩阵 `$𝑊^𝑈𝐾$` 相乘得到，这一步是做上采样，通过潜向量特征 `$𝑐_𝑡^𝐾𝑉$` 映射得到较大的 `$𝑘_𝑡^𝐶$` 用于后续的注意力计算。 `$𝑣_𝑡^𝐶$` 计算同理。
 
-[MLAStep5](./images/MLAstep5.png)
+![MLAStep5](./images/MLAstep5.png)
 
 K 向量的计算类似，通过潜在向量计算得到参与后续 MHA 计算的查询向量 q
 
 3. 计算旋转位置编码（RoPE）
 
-[MLAStep3](./images/MLAstep3.png)
+![MLAStep3](./images/MLAstep3.png)
 
 用于在键向量中引入位置信息
 
 4. 组合潜向量k和位置编码k得到最终的键向量
 
-[MLAStep4](./images/MLAstep4.png)
+![MLAStep4](./images/MLAstep4.png)
 
 最终的键向量 `$𝑘_(𝑡,𝑖)$`  是通过将内容相关的键向量 `$𝑘_(𝑡,𝑖)^𝐶$` 和位置编码 `$𝑘_𝑡^𝑅$` 连接起来得到
 
 5. 注意力计算
 
-[MLAStep5](./images/MLAstep6.png)
+![MLAStep5](./images/MLAstep6.png)
 
 最终的注意力输出 𝑢_𝑡 是通过将查询 (𝑞_(𝑡,𝑖)) ，键  (𝑘_(𝑡,𝑖))  和值  (𝑣_(𝑗,𝑖)^𝐶)  结合起来计算。其中 𝑜_(𝑡,𝑖) 是第 𝑖 个注意力头的输出
-
 
 ### 3.3 数学表达
 
@@ -417,6 +418,7 @@ def rope_matrix(seq_len, d_k, rope_params):
     return random_matrix(seq_len, d_k)
 ```
 
+
 ## 4. 三种注意力机制对比
 
 | 特性 | MQA | GQA | MLA |
@@ -426,7 +428,8 @@ def rope_matrix(seq_len, d_k, rope_params):
 |**模型效果**|略低于 MHA(共享 KV 导致信息损失)|接近 MHA(分组共享平衡性能效率)|接近 MHA(低秩压缩保留关键特征)|
 |**应用模型**|Falcon 系列模型|LLaMA-2/LLaMA-3、Qwen3|DeepSeek-V3、Kimi-K2|
 
-## 总结与思考
+
+## 5.总结与思考
 
 本章节为 对传统attention机制, 显存占用问题的优化改进。但也仅是基础, 各家在解决长序列问题时, 还会有很多其他的解决办法, 其中不少都是以上述attention变种为基础。未来attention优化的方向一定为**高效, 可扩展, 注意力效果好, 适合长上下文的方向** 如下:
 
