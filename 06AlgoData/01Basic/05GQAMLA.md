@@ -30,7 +30,7 @@ BF16精度下，每个参数占2字节. 以32B为例, 则权重部分显存占�
 在模型部署, 推理场景下传统attention, MHA下, 显存占用如下:
 
 ```math
-memory = 2 * <sequence_length> * <n_layers> * <d_model> * <precision_byte> * <batch_size>
+memory = 2 * sequence\_length * n\_layers * d\_model * precision\_byte * batch\_size
 ```
 - 2: 指的是 key cache 和value cache两个
 - sequence_length: 指序列长度
@@ -47,7 +47,7 @@ memory = 2 * <sequence_length> * <n_layers> * <d_model> * <precision_byte> * <ba
 
 
 ```math
-kvcache ~= 2 * 2048 * 64 * 5120 * 2 * batch_size / 10^9 GB
+kvcache ~= 2 * 2048 * 64 * 5120 * 2 * batch\_size / 10^9 GB
 ```
 
 - kvcache: 
