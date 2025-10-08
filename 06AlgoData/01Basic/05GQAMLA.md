@@ -37,7 +37,7 @@ memory = 2 * sequence\_length * n\_layers * d\_model * precision\_byte * batch\_
 - sequence_length: 指序列长度
 - n_layers: 指 transformer layer(block)的层数
 - d_model: 指的是隐藏层维度, 在MHA场景下 = num_heads(头的个数) * head_dim(每个头的维度)
-- precision_byte: 精度对应字节数, eg: bf16 对应2字节 fp32 对应4字节
+- precision_byte: 精度对应字节数, eg: bf16 对应2字节,p32 对应4字节
 - batch_size: 对应一次推理的batch数
 
 以常见使用及开源项目(Qwen系列)中配置, 计算显存占用:
