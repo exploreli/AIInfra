@@ -2,13 +2,13 @@
 
 # 05.Attention 变种算法
 
-## 1. 传统Attention痛点
+## 1. 传统 Attention 痛点
 
 传统 Attention(MHA)，主要主要在时间复杂度 和显存占用 两个方面的瓶颈, 本文着重讲解**显存瓶颈及解决办法**, 下一篇则讲解时间复杂度的问题。
 
 ### 时间复杂度
 
-传统Attention中 时间复杂度为 $O(n^2)$ ，这**限制了序列长度的处理**
+传统 Attention 中 时间复杂度为 $O(n^2)$ ，这**限制了序列长度的处理**
 
 ### 显存瓶颈
 
@@ -16,33 +16,33 @@
 
 #### 模型权重
 
-BF16精度下，每个参数占2字节. 以32B为例, 则权重部分显存占用计算如下:
+BF16 精度下，每个参数占 2 字节. 以 32B 为例, 则权重部分显存占用计算如下:
 
 ```math
 32 * 10^9 * 2 / 10^9 = 64GB
 ```
 #### 激活值 + 框架
 
-逐层计算且释放, 占用较小, 保守估计约100MB/请求(先不计入)
+逐层计算且释放, 占用较小, 保守估计约 100MB/请求(先不计入)
 
 #### KVCache
 
-在模型部署, 推理场景下传统attention, MHA下, 显存占用如下:
+在模型部署, 推理场景下传统 attention, MHA 下, 显存占用如下:
 
 ```math
 memory = 2 * sequence\_length * n\_layers * d\_model * precision\_byte * batch\_size
 ```
 
-- 2: 指的是 key cache 和value cache两个
+- 2: 指的是 key cache 和 value cache 两个
 - sequence_length: 指序列长度
 - n_layers: 指 transformer layer(block)的层数
-- d_model: 指的是隐藏层维度, 在MHA场景下 = num_heads(头的个数) * head_dim(每个头的维度)
-- precision_byte: 精度对应字节数, eg: bf16 对应2字节,p32 对应4字节
-- batch_size: 对应一次推理的batch数
+- d_model: 指的是隐藏层维度, 在 MHA 场景下 = num_heads(头的个数) * head_dim(每个头的维度)
+- precision_byte: 精度对应字节数, eg: bf16 对应 2 字节,p32 对应 4 字节
+- batch_size: 对应一次推理的 batch 数
 
-以常见使用及开源项目(Qwen系列)中配置, 计算显存占用:
+以常见使用及开源项目(Qwen 系列)中配置, 计算显存占用:
 - 精度: bf16
-- transformer layers: 64层
+- transformer layers: 64 层
 - d_model: 5120
 - sequence_length: 2048
 
@@ -59,16 +59,16 @@ kvcache ~= 2 * 2048 * 64 * 5120 * 2 * batch\_size / 10^9 GB
 | KV Cache |   42.9  |    85.8     |
 |    总计  |  \~=106.9GB | \~= 149.8GB |
 
-常用nvidia显卡显存: 4090(24G)，5090(32G),A100(80G), A800(80G), H20(96G), H200(141G),H800(80G)。
+常用 nvidia 显卡显存: 4090(24G)，5090(32G),A100(80G), A800(80G), H20(96G), H200(141G),H800(80G)。
 
 经上述背景描述, 我们已经对模型部署, 推理显存占用 有初步概念, 下面开始讲解优化思路
 
 ## 2. 优化思路
 
-减少KV Cache的目的就是要实现在更少的设备上推理更长的Context，或者在相同的Context长度
-下让推理的batch size更大，从而实现更快的推理速度或者更大的吞吐总量。 
+减少 KV Cache 的目的就是要实现在更少的设备上推理更长的 Context，或者在相同的 Context 长度
+下让推理的 batch size 更大，从而实现更快的推理速度或者更大的吞吐总量。 
 
-下述提到的MQA, GQA, MLA 都是围绕“如何减少KV Cache同时尽可能地保证效果”这个主题发展而来
+下述提到的 MQA, GQA, MLA 都是围绕“如何减少 KV Cache 同时尽可能地保证效果”这个主题发展而来
 
 ![MHA vs MQA](./images/AttentionAll.png)
 
@@ -79,7 +79,7 @@ kvcache ~= 2 * 2048 * 64 * 5120 * 2 * batch\_size / 10^9 GB
 
 ![MHA vs MQA](./images/MQA.png)
 
-Multi-Query Attention (MQA) 是传统 Multi-Head Attention 的一种优化变体，它通过在每个head共享 Key 和 Value, 只有Q在不同head中不同的方式来减少内存使用和计算复杂度，同时保持查询的多样性。
+Multi-Query Attention (MQA) 是传统 Multi-Head Attention 的一种优化变体，它通过在每个 head 共享 Key 和 Value, 只有 Q 在不同 head 中不同的方式来减少内存使用和计算复杂度，同时保持查询的多样性。
 
 - 文章来源: 2019 年 Google 论文
 - 原始文章: https://arxiv.org/pdf/1911.02150
@@ -177,7 +177,7 @@ Grouped-Query Attention (GQA) 是 MQA 和传统 Multi-Head Attention 之间的�
 
 ### 2.2 解决的问题
 
-- **平衡性能与效率**：在 MQA 和 MHA 之间找到最佳平衡点。MHA在大型模型和长序列处理中效率低下。MQA性能损失过大，不适合对精度要求高的场景
+- **平衡性能与效率**：在 MQA 和 MHA 之间找到最佳平衡点。MHA 在大型模型和长序列处理中效率低下。MQA 性能损失过大，不适合对精度要求高的场景
 - **任务适应性**：根据任务需求调整分组数量
 
 ### 2.3 数学表达
@@ -277,14 +277,14 @@ def grouped_query_attention(X, num_heads, num_groups, d_model):
 
 Multi-Latent Attention (MLA) 是一种创新的注意力机制，它通过引入潜在变量来建模复杂的注意力模式，能够更好地捕捉序列中的长距离依赖和复杂关系。
 
-- 文章出处: 2024.09 Deepseek在初版Deepseek V3模型推出时技术报告 
+- 文章出处: 2024.09 Deepseek 在初版 Deepseek V3 模型推出时技术报告 
 - 文章链接: https://github.com/LRriver/DeepSeek-V3/blob/main/DeepSeek_V3.pdf
 
 ### 3.2 解决的问题
 
-- **更高效的KV缓存压缩**: MLA通过低秩联合压缩，比GQA更有效地减少KV缓存需求，尤其在处理长文本时优势明显。
-- **性能与效率的更好平衡**: MLA在减少KV缓存的同时，能保持与标准多头注意力相当的性能，而GQA可能在减少缓存的同时会牺牲部分性能。
-- **训练与推理的双重优化**: MLA不仅优化了推理阶段，还通过低秩压缩减少了训练时的激活内存，而GQA主要关注推理阶段的优化
+- **更高效的 KV 缓存压缩**: MLA 通过低秩联合压缩，比 GQA 更有效地减少 KV 缓存需求，尤其在处理长文本时优势明显。
+- **性能与效率的更好平衡**: MLA 在减少 KV 缓存的同时，能保持与标准多头注意力相当的性能，而 GQA 可能在减少缓存的同时会牺牲部分性能。
+- **训练与推理的双重优化**: MLA 不仅优化了推理阶段，还通过低秩压缩减少了训练时的激活内存，而 GQA 主要关注推理阶段的优化
 
 ### 3.3 数学表达
 
@@ -306,7 +306,7 @@ $$
 
 ### 3.4 计算步骤
 
-#### 1. 计算代表 KV Cache的潜在向量
+#### 1. 计算代表 KV Cache 的潜在向量
 
 ![MLAStep1](./images/MLAstep1.png)
 
@@ -328,7 +328,7 @@ K 向量的计算类似，通过潜在向量计算得到参与后续 MHA 计算�
 
 用于在键向量中引入位置信息
 
-#### 4. 组合潜向量k和位置编码k得到最终的键向量
+#### 4. 组合潜向量 k 和位置编码 k 得到最终的键向量
 
 ![MLAStep4](./images/MLAstep4.png)
 
@@ -350,8 +350,8 @@ def multi_latent_attention(X, num_heads, d_model, latent_kv_dim, rope_params):
     X: 输入序列 [seq_len, d_model]
     num_heads: 注意力头数量
     d_model: 模型维度
-    latent_kv_dim: KV 缓存潜在向量维度（步骤1：缩小后的维度）
-    rope_params: RoPE 位置编码参数（步骤3）
+    latent_kv_dim: KV 缓存潜在向量维度（步骤 1：缩小后的维度）
+    rope_params: RoPE 位置编码参数（步骤 3）
     """
     d_k = d_model // num_heads
 
@@ -431,10 +431,10 @@ def rope_matrix(seq_len, d_k, rope_params):
 
 ## 5.总结与思考
 
-本章节为 对传统attention机制, 显存占用问题的优化改进。但也仅是基础, 各家在解决长序列问题时, 还会有很多其他的解决办法, 其中不少都是以上述attention变种为基础。未来attention优化的方向一定为**高效, 可扩展, 注意力效果好, 适合长上下文的方向** 如下:
+本章节为 对传统 attention 机制, 显存占用问题的优化改进。但也仅是基础, 各家在解决长序列问题时, 还会有很多其他的解决办法, 其中不少都是以上述 attention 变种为基础。未来 attention 优化的方向一定为**高效, 可扩展, 注意力效果好, 适合长上下文的方向** 如下:
 
 - 减少复杂度：随着大模型发展，通过优化 Attention 计算复杂度提出 Linear Attention 等
-- 长序列建模​​：结合稀疏注意力与动态路由，进一步压缩KV Cache。
+- 长序列建模​​：结合稀疏注意力与动态路由，进一步压缩 KV Cache。
 - 多模态扩展​​：探索跨模态注意力交互，如视觉-语言联合表征。
 
 ## 本节视频

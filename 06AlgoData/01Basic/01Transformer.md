@@ -72,7 +72,7 @@ Transformer 模型由 Vaswani 等人在 2017 年提出，首次完全舍弃循�
 在 Transformer 的输入层中，首先要对文本进行 **Tokenization（分词）**，将句子拆解成若干基本单元（token），再为每个 token 分配唯一的索引编号。随后，这些编号会映射到一个高维向量空间中，形成 **词嵌入（Word Embedding）**，用于表示每个词在语义空间中的位置。由于 Transformer 不再具有 RNN 那样的时序结构，因此模型需要额外加入 **位置编码（Positional Encoding）**，用以描述序列中各词的相对与绝对位置关系。位置编码通过固定或可学习的向量形式，与词嵌入逐元素相加，使模型能够在并行计算的同时保留顺序信息。最终，经过嵌入与位置编码的融合，输入文本被转换为连续的数值矩阵，成为后续 **自注意力层（Self-Attention）** 建模的基础。
 
 
-![Transformer输入示意图](images/01Transformer03.png)
+![Transformer 输入示意图](images/01Transformer03.png)
 
 上图直观展示了 Transformer 在输入层中的数据处理过程。最底部的句子 *“I ate an women”* 代表原始输入文本，首先经过 **Tokenize（分词）** 操作，被拆解为若干基本单元 —— *I*、*ate*、*an*、*apple*、*<eos>*。每个蓝色方块代表一个 token，经分词后被送入橙色的 **Embedding Layers（词嵌入层）**。在该层中，每个 token 会被映射为一个高维向量，用绿色方块矩阵表示，每个向量的维度大小为 *d_model*。这些高维向量不仅捕捉了词语的语义信息，也使模型能够在连续空间中处理文本。随后，模型会在这些嵌入上叠加 **位置编码（Positional Encoding）**，以显式引入词序信息。通过这种方式，Transformer 在实现高效并行计算的同时，仍能理解句子中各单词的相对顺序。最终，这些融合了语义与位置信息的嵌入矩阵将作为输入，送入后续的 **自注意力层（Self-Attention）** 进行上下文建模。
 
