@@ -56,16 +56,16 @@ def calculate_bubble_rate(strategy_name, num_stages, num_microbatches, interleav
     if num_stages == 1:
         return 0.0
     if strategy_name == "Naive":
-        # Naive策略没有流水线并行，空泡率为0
+        # Naive 策略没有流水线并行，空泡率为 0
         return 0.0
     elif strategy_name == "GPipe":
-        # GPipe的空泡率公式
+        # GPipe 的空泡率公式
         return (num_stages - 1) / (num_microbatches + num_stages - 1)
     elif strategy_name == "1F1B":
-        # 1F1B的空泡率公式
+        # 1F1B 的空泡率公式
         return (num_stages - 1) / num_microbatches
     elif strategy_name == "Interleaved 1F1B":
-        # Interleaved 1F1B的空泡率公式
+        # Interleaved 1F1B 的空泡率公式
         return (num_stages - 1) / (num_microbatches * interleaving_degree)
     else:
         return 0.0
@@ -133,7 +133,7 @@ class NaivePipelineParallel(nn.Module):
         for i, (stage, dev) in enumerate(zip(self.stages, self.device_ids)):
             current_output = stage(current_output)
             if i < len(self.stages) - 1:
-                # 移除detach()，保留梯度
+                # 移除 detach()，保留梯度
                 current_output_act = current_output.requires_grad_(True)
                 intermediates.append(current_output_act)
                 current_output = current_output_act.to(self.device_ids[i+1])
@@ -164,7 +164,7 @@ class GPipeParallel(nn.Module):
             self.stages[i] = stage.to(dev)
 
     def forward(self, x):
-        """GPipe策略: 先所有微批次前向，再所有微批次反向"""
+        """GPipe 策略: 先所有微批次前向，再所有微批次反向"""
         # 分割输入为微批次
         micro_batches = torch.chunk(x, self.num_microbatches, dim=0)
         activations = [[] for _ in range(self.num_stages)]
@@ -188,7 +188,7 @@ class GPipeParallel(nn.Module):
         return output, activations
 
     def backward(self, loss, activations):
-        """GPipe反向传播 - 修复版本"""
+        """GPipe 反向传播 - 修复版本"""
         # 计算最终损失梯度
         loss.backward()
 
@@ -238,16 +238,16 @@ def calculate_bubble_rate(strategy_name, num_stages, num_microbatches, interleav
     if num_stages == 1:
         return 0.0
     if strategy_name == "Naive":
-        # Naive策略没有流水线并行，空泡率为0
+        # Naive 策略没有流水线并行，空泡率为 0
         return 0.0
     elif strategy_name == "GPipe":
-        # GPipe的空泡率公式
+        # GPipe 的空泡率公式
         return (num_stages - 1) / (num_microbatches + num_stages - 1)
     elif strategy_name == "1F1B":
-        # 1F1B的空泡率公式
+        # 1F1B 的空泡率公式
         return (num_stages - 1) / num_microbatches
     elif strategy_name == "Interleaved 1F1B":
-        # Interleaved 1F1B的空泡率公式
+        # Interleaved 1F1B 的空泡率公式
         return (num_stages - 1) / (num_microbatches * interleaving_degree)
     else:
         return 0.0
@@ -318,7 +318,7 @@ class OneFOneBPipeline(nn.Module):
             self.stages[i] = stage.to(dev)
 
     def forward(self, x):
-        """1F1B策略: 交替执行前向和反向传播 - 重新实现"""
+        """1F1B 策略: 交替执行前向和反向传播 - 重新实现"""
         # 分割输入为微批次
         micro_batches = torch.chunk(x, self.num_microbatches, dim=0)
         activations = [[] for _ in range(self.num_stages)]
@@ -326,7 +326,7 @@ class OneFOneBPipeline(nn.Module):
 
         # 1. 前向填充阶段 (Warm-up)
         for i in range(self.num_stages):
-            # 处理前i+1个微批次的前i+1个阶段
+            # 处理前 i+1 个微批次的前 i+1 个阶段
             for j in range(i + 1):
                 if j >= len(micro_batches):
                     break
@@ -346,7 +346,7 @@ class OneFOneBPipeline(nn.Module):
                 if i == self.num_stages - 1:
                     outputs.append(current)
 
-        # 2. 1F1B阶段 (Steady state)
+        # 2. 1F1B 阶段 (Steady state)
         for i in range(self.num_stages, self.num_microbatches):
             # 前向传播
             current = micro_batches[i].to(self.device_ids[0])
@@ -372,7 +372,7 @@ class OneFOneBPipeline(nn.Module):
         return output, activations
 
     def backward(self, loss, activations):
-        """1F1B反向传播 - 修复版本"""
+        """1F1B 反向传播 - 修复版本"""
         # 计算最终损失梯度
         loss.backward()
 
@@ -424,13 +424,13 @@ class InterleavedOneFOneBPipeline(nn.Module):
             self.stages[i] = stage.to(dev)
 
     def forward(self, x):
-        """Interleaved 1F1B策略: 改进的1F1B，更细粒度的流水线"""
+        """Interleaved 1F1B 策略: 改进的 1F1B，更细粒度的流水线"""
         # 分割输入为微批次
         micro_batches = torch.chunk(x, self.num_microbatches, dim=0)
         activations = [[] for _ in range(self.num_stages)]
         outputs = []
 
-        # 简化的Interleaved实现 - 使用分组处理
+        # 简化的 Interleaved 实现 - 使用分组处理
         group_size = self.interleaving_degree
 
         # 处理每个微批次组
@@ -452,7 +452,7 @@ class InterleavedOneFOneBPipeline(nn.Module):
         return output, activations
 
     def backward(self, loss, activations):
-        """Interleaved 1F1B反向传播 - 修复版本"""
+        """Interleaved 1F1B 反向传播 - 修复版本"""
         # 计算最终损失梯度
         loss.backward()
 
@@ -640,12 +640,12 @@ Pipeline 阶段 2 用设备: [2, 3]
 
 ```python
 def get_gpu_memory_usage(device_ids):
-    """获取所有GPU的显存使用情况"""
+    """获取所有 GPU 的显存使用情况"""
     memory_usage = {}
     for device in device_ids:
         if device.type == 'cuda':
-            memory_allocated = torch.cuda.memory_allocated(device) / (1024 ** 3)  # 转换为GB
-            memory_cached = torch.cuda.memory_reserved(device) / (1024 ** 3)  # 转换为GB
+            memory_allocated = torch.cuda.memory_allocated(device) / (1024 ** 3)  # 转换为 GB
+            memory_cached = torch.cuda.memory_reserved(device) / (1024 ** 3)  # 转换为 GB
             memory_usage[str(device)] = {
                 'allocated': memory_allocated,
                 'cached': memory_cached
@@ -689,7 +689,7 @@ def run_pipeline_experiment(pipeline_class, strategy_name, num_epochs=50, batch_
         if device.type == 'cuda':
             torch.cuda.empty_cache()
 
-    # 2. 构建Pipeline模型
+    # 2. 构建 Pipeline 模型
     model_parts = create_model_parts(input_size=input_size, output_size=output_size)
     model_parts = model_parts[:num_stages]
 
@@ -797,7 +797,7 @@ def print_results_table(results):
     print(f"| {'策略名称':<18} | {'平均时间':<10} | {'最终损失':<10} | {'空泡率':<10} | {'显存(GB)':<10} | {'缓存(GB)':<10} |")
     print(f"+{'-'*20}+{'-'*12}+{'-'*12}+{'-'*12}+{'-'*12}+{'-'*12}+")
 
-    # 获取Naive策略的结果作为基准
+    # 获取 Naive 策略的结果作为基准
     naive_time = results["Naive"]["avg_time"] if "Naive" in results else 1.0
     num_devices = len(get_available_devices(max_devices=4))
 
@@ -861,7 +861,7 @@ print_results_table(results)
 正在运行 Naive 策略...
 ============================================================
 
-=== 开始 Naive Pipeline 训练（共50轮）===
+=== 开始 Naive Pipeline 训练（共 50 轮）===
 Epoch  10/50, 损失: 2.3016, 时间: 0.0090s, 显存: 0.04GB/0.08GB, LR: 0.001000
 Epoch  20/50, 损失: 2.3015, 时间: 0.0084s, 显存: 0.04GB/0.08GB, LR: 0.000500
 Epoch  30/50, 损失: 2.3061, 时间: 0.0083s, 显存: 0.04GB/0.08GB, LR: 0.000500
@@ -883,7 +883,7 @@ Epoch  50/50, 损失: 2.3019, 时间: 0.0078s, 显存: 0.04GB/0.08GB, LR: 0.0002
 正在运行 GPipe 策略...
 ============================================================
 
-=== 开始 GPipe Pipeline 训练（共50轮）===
+=== 开始 GPipe Pipeline 训练（共 50 轮）===
 Epoch  10/50, 损失: 2.3045, 时间: 0.0510s, 显存: 0.01GB/0.03GB, LR: 0.001000
 Epoch  20/50, 损失: 2.3078, 时间: 0.0513s, 显存: 0.01GB/0.03GB, LR: 0.000500
 Epoch  30/50, 损失: 2.3016, 时间: 0.0511s, 显存: 0.01GB/0.03GB, LR: 0.000500
@@ -905,7 +905,7 @@ Epoch  50/50, 损失: 2.3032, 时间: 0.0515s, 显存: 0.01GB/0.03GB, LR: 0.0002
 正在运行 1F1B 策略...
 ============================================================
 
-=== 开始 1F1B Pipeline 训练（共50轮）===
+=== 开始 1F1B Pipeline 训练（共 50 轮）===
 Epoch  10/50, 损失: 2.3094, 时间: 0.0570s, 显存: 0.01GB/0.03GB, LR: 0.001000
 Epoch  20/50, 损失: 2.3015, 时间: 0.0568s, 显存: 0.01GB/0.03GB, LR: 0.000500
 Epoch  30/50, 损失: 2.3067, 时间: 0.0567s, 显存: 0.01GB/0.03GB, LR: 0.000500
@@ -927,7 +927,7 @@ Epoch  50/50, 损失: 2.3039, 时间: 0.0569s, 显存: 0.01GB/0.03GB, LR: 0.0002
 正在运行 Interleaved 1F1B 策略...
 ============================================================
 
-=== 开始 Interleaved 1F1B Pipeline 训练（共50轮）===
+=== 开始 Interleaved 1F1B Pipeline 训练（共 50 轮）===
 Epoch  10/50, 损失: 2.3026, 时间: 0.0515s, 显存: 0.01GB/0.03GB, LR: 0.001000
 Epoch  20/50, 损失: 2.2959, 时间: 0.0517s, 显存: 0.01GB/0.03GB, LR: 0.000500
 Epoch  30/50, 损失: 2.3065, 时间: 0.0519s, 显存: 0.01GB/0.03GB, LR: 0.000500

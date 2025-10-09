@@ -172,28 +172,28 @@ RoCE 使得基于以太网的数据传输能够：提高数据传输吞吐量、
 
 
 
-RDMA的硬件主要包括：**以太网适配器、智能网卡（SmartNICs）、数据处理器（DPU）以及交换机芯片**。这里主要介绍一些国外和国内的主流厂商，需要注意的是，不同的厂商对 RDMA 协议的支持也有所侧重。国外的主要玩家有：**英伟达、英特尔、博通、美满电子、AMD**；国内的RDMA硬件厂商主要有：**华为、浪潮、中兴、锐捷网络**，此外国内的腾讯、阿里、字节等大厂也在**自研RDMA**。下面分别介绍各家的RDMA产品。
+RDMA 的硬件主要包括：**以太网适配器、智能网卡（SmartNICs）、数据处理器（DPU）以及交换机芯片**。这里主要介绍一些国外和国内的主流厂商，需要注意的是，不同的厂商对 RDMA 协议的支持也有所侧重。国外的主要玩家有：**英伟达、英特尔、博通、美满电子、AMD**；国内的 RDMA 硬件厂商主要有：**华为、浪潮、中兴、锐捷网络**，此外国内的腾讯、阿里、字节等大厂也在**自研 RDMA**。下面分别介绍各家的 RDMA 产品。
 
 
 
 **英伟达**
 
-英伟达的RDMA硬件主要分为**网络适配器、数据处理器（DPU）和交换机**三大类，协同构成了完整的端到端RDMA网络解决方案。
+英伟达的 RDMA 硬件主要分为**网络适配器、数据处理器（DPU）和交换机**三大类，协同构成了完整的端到端 RDMA 网络解决方案。
 
-英伟达的RDMA网络适配器主要包括**ConnectX系列智能网卡**和专为AI优化的**BlueField SuperNIC**。ConnectX系列智能网卡 (ConnectX SmartNICs)是英伟达最核心的网络产品线，目前已发展到ConnectX-7等先进型号，支持**InfiniBand协议、RoCE v1和v2协议**。
+英伟达的 RDMA 网络适配器主要包括**ConnectX 系列智能网卡**和专为 AI 优化的**BlueField SuperNIC**。ConnectX 系列智能网卡 (ConnectX SmartNICs)是英伟达最核心的网络产品线，目前已发展到 ConnectX-7 等先进型号，支持**InfiniBand 协议、RoCE v1 和 v2 协议**。
 
-**BlueField DPU**将ConnectX网卡的功能与Arm处理器核心以及可编程的加速引擎集成在一颗芯片上，能够独立于服务器主CPU运行网络、存储和安全等基础设施服务，实现了数据中心控制平面与数据平面的隔离，提升了安全性和效率，与ConnectX系列一致，全面支持 **InfiniBand** 和 **RoCE**
+**BlueField DPU**将 ConnectX 网卡的功能与 Arm 处理器核心以及可编程的加速引擎集成在一颗芯片上，能够独立于服务器主 CPU 运行网络、存储和安全等基础设施服务，实现了数据中心控制平面与数据平面的隔离，提升了安全性和效率，与 ConnectX 系列一致，全面支持 **InfiniBand** 和 **RoCE**
 
-英伟达提供**两种主要的交换机产品线**，分别对应InfiniBand和以太网生态系统。**Quantum系列 InfiniBand交换机**是为InfiniBand网络设计的专用交换机，如NVIDIA Quantum-2平台，提供极高的端口速率（如NDR 400Gb/s）。**Spectrum系列以太网交换机**是专为数据中心以太网设计的高性能交换机，如Spectrum-4。它们是NVIDIA Spectrum-X平台的核心组件。
+英伟达提供**两种主要的交换机产品线**，分别对应 InfiniBand 和以太网生态系统。**Quantum 系列 InfiniBand 交换机**是为 InfiniBand 网络设计的专用交换机，如 NVIDIA Quantum-2 平台，提供极高的端口速率（如 NDR 400Gb/s）。**Spectrum 系列以太网交换机**是专为数据中心以太网设计的高性能交换机，如 Spectrum-4。它们是 NVIDIA Spectrum-X 平台的核心组件。
 
 
 
-| 硬件类别   | 主要产品系列                | 核心特点                                                | 主要支持的RDMA协议 |
+| 硬件类别   | 主要产品系列                | 核心特点                                                | 主要支持的 RDMA 协议 |
 | ---------- | --------------------------- | ------------------------------------------------------- | ------------------ |
 | 网络适配器 | ConnectX SmartNICs          | 高性能、硬件卸载、GPUDirect RDMA                        | InfiniBand 和 RoCE |
-| 数据处理器 | BlueField DPUs              | 基础设施卸载与隔离、软件定义、继承ConnectX所有功能      | InfiniBand 和 RoCE |
+| 数据处理器 | BlueField DPUs              | 基础设施卸载与隔离、软件定义、继承 ConnectX 所有功能      | InfiniBand 和 RoCE |
 | 交换机     | Quantum InfiniBand Switches | 超低延迟、网络内计算 (In-Network Computing)、自适应路由 | InfiniBand         |
-| 交换机     | Spectrum Ethernet Switches  | 为AI优化的以太网、高级RoCE优化、开放可编程              | RoCE               |
+| 交换机     | Spectrum Ethernet Switches  | 为 AI 优化的以太网、高级 RoCE 优化、开放可编程              | RoCE               |
 
 
 
