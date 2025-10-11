@@ -138,7 +138,7 @@ parameters:
   skuname: Premium_LRS
 ```
 
-延迟绑定(WaitForFirstConsumer)
+延迟绑定(WaitForFirstConsumer)流程如下：
 
 ![延迟绑定](./images/02storagetype.png)
 
