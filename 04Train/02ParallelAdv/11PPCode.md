@@ -1,14 +1,14 @@
-# 分布式框架里的PP实现
+# 分布式框架里的 PP 实现
 
 > Author by：高亮  
 
 ## 1. 模型运行入口与 PP / VPP 配置
-在Megatron-core分布式训练框架里，通过pretrain_gpt.py的main函数调用pretrain->get_model,get_model函数判断pipeline的划分策略，其过程为：
+在 Megatron-core 分布式训练框架里，通过 pretrain_gpt.py 的 main 函数调用 pretrain->get_model,get_model 函数判断 pipeline 的划分策略，其过程为：
 
 ```text
 main → pretrain → setup_model_and_optimizer → get_model
 ```
-其中`get_model` 依据启动参数决定是否启用流水线并行 p与虚拟流水 v：
+其中`get_model` 依据启动参数决定是否启用流水线并行 p 与虚拟流水 v：
 
 * **p ≤ 1**：整模在本卡，不做纵向切分；
 * **p > 1 且 v=0**：每卡 1 段（PP）；
@@ -30,7 +30,7 @@ model, optimizer, sched = setup_model_and_optimizer(model_provider, model_type)
 model = get_model(model_provider, model_type)  # ← 这里决定 PP / VPP 形态
 ```
 
-### 1.2 get_model的伪代码实现
+### 1.2 get_model 的伪代码实现
 
 ```pseudo
 def get_model(model_provider, model_type):
@@ -69,11 +69,11 @@ main → pretrain → setup_model_and_optimizer → get_model → model_provider
 ```
 
 - `training.get_model(...)`
-   上节介绍，判断是否为VPP，调用脚本回调 `model_provider(...)`。
+   上节介绍，判断是否为 VPP，调用脚本回调 `model_provider(...)`。
 
 - `pretrain_gpt.model_provider(pre_process, post_process, vp_stage)`
    返回 仅含本段职责 的 `GPTModel`。
-   > 核心理解：PP（无论是否调用VPP）本质上是纵向将模型切分，因此一个stage（vp_stage）仅负责模型的部分计算，因此PP模型实例化本质上是给各个stage划分自己负责的模型部分并且实例化。后续是具体构建细节，**理解到这层即可**。
+   > 核心理解：PP（无论是否调用 VPP）本质上是纵向将模型切分，因此一个 stage（vp_stage）仅负责模型的部分计算，因此 PP 模型实例化本质上是给各个 stage 划分自己负责的模型部分并且实例化。后续是具体构建细节，**理解到这层即可**。
 
    ```python
    def model_provider(pre_process=True, post_process=True, vp_stage=None):
@@ -103,7 +103,7 @@ main → pretrain → setup_model_and_optimizer → get_model → model_provider
 
 ## 3. PP 获取需要执行的层数
 
-当前 Stage（或 `vp_stage`）需要实例化的层数由`get_num_layers_to_build(config, vp_stage)` 决定，记为 N，在典型同构场景下：无 VPP 时 N ≈ L / p；有 VPP（每卡 v 段）时 N ≈ L / (p·v)，其中L为全局模型的总层数（Transformer 总层数）。随后在实例化时通过`get_transformer_layer_offset(config, vp_stage)` 计算全局层号起点 `offset`，将局部层号 `1..N` 映射到全局层号，保证跨 Stage/虚拟段不重叠且顺序正确（VPP 为 stride = p 的交错映射）。
+当前 Stage（或 `vp_stage`）需要实例化的层数由`get_num_layers_to_build(config, vp_stage)` 决定，记为 N，在典型同构场景下：无 VPP 时 N ≈ L / p；有 VPP（每卡 v 段）时 N ≈ L / (p·v)，其中 L 为全局模型的总层数（Transformer 总层数）。随后在实例化时通过`get_transformer_layer_offset(config, vp_stage)` 计算全局层号起点 `offset`，将局部层号 `1..N` 映射到全局层号，保证跨 Stage/虚拟段不重叠且顺序正确（VPP 为 stride = p 的交错映射）。
 
 ### 3.1 份额计算：确定本段要建几层
 
@@ -182,7 +182,7 @@ def get_forward_backward_func():
     return forward_backward_no_pipelining
 ```
 
-pipeline_parallel.schedules 模块作为PP的调度核心，为训练主循环提供一个统一入口`get_forward_backward_func()`，并且按配置返回如上所示，三选一的调度器，其调度器的内部依赖一组原子步骤，如：`forward_step`、`backward_step`、`deallocate_output_tensor`、`custom_backward` 等；并通过 pipeline_parallel.p2p_communication 完成跨 stage 的 send/recv 通信操作。
+pipeline_parallel.schedules 模块作为 PP 的调度核心，为训练主循环提供一个统一入口`get_forward_backward_func()`，并且按配置返回如上所示，三选一的调度器，其调度器的内部依赖一组原子步骤，如：`forward_step`、`backward_step`、`deallocate_output_tensor`、`custom_backward` 等；并通过 pipeline_parallel.p2p_communication 完成跨 stage 的 send/recv 通信操作。
 
 ---
 
@@ -190,7 +190,7 @@ pipeline_parallel.schedules 模块作为PP的调度核心，为训练主循环�
 
 Megatron-Core 的前向阶段由 `forward_step` 驱动；它调用你提供的 `forward_step_func` 完成本段模型的前向，并把结果交给 `forward_step_calc_loss` 做损失/统计或收集非损失数据。官方 API 对两者的职责与参数有明确约定。
 
-此处，会判断PP阶段来获取不同的数据来源，若处于首段则直接从 `data_iterator` 取 batch 作为输入。若处于非首段则会使用上游阶段通过 P2P 发送下来的 `input_tensor`。返回值均是“前向输出对象（张量或张量集合）”。
+此处，会判断 PP 阶段来获取不同的数据来源，若处于首段则直接从 `data_iterator` 取 batch 作为输入。若处于非首段则会使用上游阶段通过 P2P 发送下来的 `input_tensor`。返回值均是“前向输出对象（张量或张量集合）”。
 
 ### 5.1 `forward_step` 的最小调用约定
 
@@ -202,7 +202,7 @@ Megatron-Core 的前向阶段由 `forward_step` 驱动；它调用你提供的 `
     
     二元组 (reduced_loss, other)：框架会将 reduced_loss 再除以“全局 microbatches 数”，以保证跨卡/切分规模变化时损失数值稳定。
     三元组 (reduced_loss, num_tokens, other)：在二元组基础上，reduced_loss 还会按 num_tokens 进一步做 token 平均。
-    任意对象any_payload（如推理时需要的字典/列表/张量集合）：需在调用调度例程时设置 collect_non_loss_data=True（常与 forward_only=True 搭配），表示不计算损失，只收集前向产出。
+    任意对象 any_payload（如推理时需要的字典/列表/张量集合）：需在调用调度例程时设置 collect_non_loss_data=True（常与 forward_only=True 搭配），表示不计算损失，只收集前向产出。
 
 
 ### 5.2 `forward_step` 伪代码：
@@ -237,8 +237,8 @@ def forward_step(forward_step_func, data_iterator, model,
 
 `loss_func(output_tensor)` 允许三种返回形式，不同形式触发不同的内部缩放/汇总规则：
 - 对于二元组，框架会将`reduced_loss` 再除以全局 microbatches 数，保证拆分规模变化时损失稳定。
-- 对于三元组，在二元组的基础上，还会按num_tokens做进一步平均。
-- 对于任意对象any，需要上层在调用调度函数时设置 `collect_non_loss_data=True`（通常也会forward_only=True）。
+- 对于三元组，在二元组的基础上，还会按 num_tokens 做进一步平均。
+- 对于任意对象 any，需要上层在调用调度函数时设置 `collect_non_loss_data=True`（通常也会 forward_only=True）。
 
 归约路径伪代码：
 
@@ -281,7 +281,7 @@ Megatron-Core 在 PP/VPP 调度中，把一次微批的反向拆成三件事：
 
 ### 6.1 `deallocate_output_tensor(out, deallocate_pipeline_outputs=False)` —— 前向后立刻“伪释放”激活
 
-已把前向输出发给下游后，把 `out.data` 置成标量，仅保留 `out.grad_fn`，以便稍后反向；显著降低峰值显存。应当紧跟send_forward之后调用。为什么可以这样做呢？需要从反向过程的核心原理来理解：
+已把前向输出发给下游后，把 `out.data` 置成标量，仅保留 `out.grad_fn`，以便稍后反向；显著降低峰值显存。应当紧跟 send_forward 之后调用。为什么可以这样做呢？需要从反向过程的核心原理来理解：
 反向传播依赖的是“计算图的结构 + 必要的中间缓存”而非边界输出张量本身的数值。在流水线里，一个 stage 的“边界输出”只是下游的输入；对本 stage 的反向而言，它只用来**作为反向的入口**。具体做梯度时，Autograd 会从这个入口节点（`grad_fn`）向上游回溯，逐个算子调用各自的反向函数，并使用这些算子在前向时已经保存到节点里的中间量（`saved_tensors`，如激活、索引、形状等）来计算本层参数梯度和输入梯度。也就是说：
 
 * **需要保留的**是这个“入口节点”以及整张图的**边连接关系**（`out.grad_fn` 及其 `next_functions`）；
@@ -350,7 +350,7 @@ def custom_backward(output, grad_output):
 
 ## 7. 非交错 1F1B 调度的实现：`forward_backward_pipelining_without_interleaving(...)`
 
-在不开启 VPP 的情况下，按**1F1B**（One-Forward-One-Backward）方式对一个全局 batch 的 `num_microbatches` 进行流水处理：先warmup，再进入steady“每步 1F+1B”，最后cooldown。只有末段返回 losses 字典，其它段返回空字典；该函数也支持 `forward_only / collect_non_loss_data`。
+在不开启 VPP 的情况下，按**1F1B**（One-Forward-One-Backward）方式对一个全局 batch 的 `num_microbatches` 进行流水处理：先 warmup，再进入 steady“每步 1F+1B”，最后 cooldown。只有末段返回 losses 字典，其它段返回空字典；该函数也支持 `forward_only / collect_non_loss_data`。
 
 ### 7.1 核心时序
 
@@ -364,7 +364,7 @@ def custom_backward(output, grad_output):
 * 只在该“非交错”调度里提供 `adjust_tensor_shapes_fn`，可对**收/发张量形状**做一次统一调整（适配自定义分片/布局）。([NVIDIA Docs][1])
 
 
-**1F1B调度过程伪代码**
+**1F1B 调度过程伪代码**
 
 ```pseudo
 def forward_backward_pipelining_without_interleaving(
@@ -400,7 +400,7 @@ def forward_backward_pipelining_without_interleaving(
     if forward_only:
         return losses  # 评测/推理：只跑前向
 
-    # 2) Steady 1F1B: 本步做 “下一F + 上一B”
+    # 2) Steady 1F1B: 本步做 “下一 F + 上一 B”
     for m in range(total - warmup):
         # 2a) 前向（并与下游梯度接收重叠）
         if first:
@@ -445,10 +445,10 @@ def forward_backward_pipelining_without_interleaving(
 
 ### 8.1 核心时序（交错 1F1B）
 
-* **Warmup**：按调度表，不同stage在不同chunk上做前向，并将边界输出发送给下游。
+* **Warmup**：按调度表，不同 stage 在不同 chunk 上做前向，并将边界输出发送给下游。
 * **Steady**：每个时间隙执行一个三元组 `(virtual_microbatch_id, microbatch_id, model_chunk_id)`；同一步内把本步 chunk 的前向发送与接收更早微批的梯度打包（`send_forward_recv_backward`），随后对相应输入做反向并把 `grad_in` 发回上游。
 
-> steady 阶段的三元组 (vmb, mb, chunk_id) ：vmb 是“在本机这条虚拟流水线上的第几个在飞槽位，mb 表示“要处理的那一个全局微批编号，chunk_id 表示“本 stage 内用哪一块模型分片（chunk）来跑这一步，其中在飞指的是：指某个微批已经在这条流水线上完成了前向，但还没完成对应的反向，因此仍占着这条虚拟流水线的一席“槽位”。因此steady阶段利用三元组回答了这一步到底在处理谁、在哪条虚拟线、用哪块模型的问题。
+> steady 阶段的三元组 (vmb, mb, chunk_id) ：vmb 是“在本机这条虚拟流水线上的第几个在飞槽位，mb 表示“要处理的那一个全局微批编号，chunk_id 表示“本 stage 内用哪一块模型分片（chunk）来跑这一步，其中在飞指的是：指某个微批已经在这条流水线上完成了前向，但还没完成对应的反向，因此仍占着这条虚拟流水线的一席“槽位”。因此 steady 阶段利用三元组回答了这一步到底在处理谁、在哪条虚拟线、用哪块模型的问题。
 
 * **Cooldown**：将尚未回传完的微批逐一做反向。
   通信均由 `P2PCommunicator` 的复合接口完成，以实现通信×计算重叠；前向发送后立即 `deallocate_output_tensor` 只做显存优化、不改变时序。
@@ -515,8 +515,8 @@ def forward_backward_pipelining_with_interleaving(
 
 ### 8.3 与非交错 1F1B 的差异速览
 
-* **相同**：都有warmup→steady→cooldown；只在末段汇总 `losses`；使用复合通信重叠 FWD/BWD；前向发送后立即“瘦身”输出、反向用 `custom_backward` 直调 C++ 引擎。
-* **不同**：交错版每步还要选择 chunk并遵循 `get_schedule_table/convert_schedule_table_to_order` 的三元组时序，对每个 chunk 的收/发形状分别处理，并满足VPP 的连续微批窗口/整除性等额外约束。
+* **相同**：都有 warmup→steady→cooldown；只在末段汇总 `losses`；使用复合通信重叠 FWD/BWD；前向发送后立即“瘦身”输出、反向用 `custom_backward` 直调 C++ 引擎。
+* **不同**：交错版每步还要选择 chunk 并遵循 `get_schedule_table/convert_schedule_table_to_order` 的三元组时序，对每个 chunk 的收/发形状分别处理，并满足 VPP 的连续微批窗口/整除性等额外约束。
 
 ---
 
@@ -561,7 +561,7 @@ def forward_backward_no_pipelining(
 
     return losses  # 单段直接返回（若 forward_only=True 可能为空/只含指标）
 ```
-`forward_backward_no_pipelining` 是“单段”场景下的统一执行路径：不做跨段通信，在本 rank 内完成前向、（可选）反向与梯度累积；`losses` 直接在本地汇总，适用于PP=1或仅推理/验证的运行模式。
+`forward_backward_no_pipelining` 是“单段”场景下的统一执行路径：不做跨段通信，在本 rank 内完成前向、（可选）反向与梯度累积；`losses` 直接在本地汇总，适用于 PP=1 或仅推理/验证的运行模式。
 
 
 ---
