@@ -1,21 +1,30 @@
-# 分布式框架里的 PP 实现
+<!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
+
+# Megatron 中 PP 实现
 
 > Author by：高亮  
 
+!!!!!!!!1）首先注意格式；2）注意不要大模型的列表，用自己的语言来表达和理解。3）代码的架构图，逻辑图，要去梳理这些才能深入。4）标题尽可能在 10 个字左右压缩下，不要太大长。
+
 ## 1. 模型运行入口与 PP / VPP 配置
+
 在 Megatron-core 分布式训练框架里，通过 pretrain_gpt.py 的 main 函数调用 pretrain->get_model,get_model 函数判断 pipeline 的划分策略，其过程为：
 
 ```text
 main → pretrain → setup_model_and_optimizer → get_model
 ```
+
 其中`get_model` 依据启动参数决定是否启用流水线并行 p 与虚拟流水 v：
 
 * **p ≤ 1**：整模在本卡，不做纵向切分；
 * **p > 1 且 v=0**：每卡 1 段（PP）；
 * **p > 1 且 v>0**：每卡 v 段（VPP，返回模型列表，训练期用 interleaved 1F1B 调度）。
-  首/末段用 `pre_process / post_process` 标识；VPP 额外携带 `vp_stage` 索引。
 
-### 1.1 入口与构建触发源码：
+首/末段用 `pre_process / post_process` 标识；VPP 额外携带 `vp_stage` 索引。
+
+### 1.1 入口与构建触发源码
+
+!!!!!!!!伪代码要有原理解读，其实代码可以少一点，更多的是对架构的理解和梳理
 
 ```python
 # Megatron-LM/pretrain_gpt.py
@@ -30,7 +39,7 @@ model, optimizer, sched = setup_model_and_optimizer(model_provider, model_type)
 model = get_model(model_provider, model_type)  # ← 这里决定 PP / VPP 形态
 ```
 
-### 1.2 get_model 的伪代码实现
+### 1.2 get_model 伪代码
 
 ```pseudo
 def get_model(model_provider, model_type):
@@ -56,10 +65,13 @@ def get_model(model_provider, model_type):
     models.append(m_i)
   return models
 ```
+
 get_model()只做两件事：判定是否 VPP，以及给当前（虚拟）stage 标好首/末段再实例化模型；返回的形态（单模型 or 模型列表）直接决定训练期选择的日程。
 > 非 VPP → 返回单模型 → forward_backward_pipelining_without_interleaving（1F1B）,VPP → 返回模型列表（按 vp_stage） → forward_backward_pipelining_with_interleaving（交错轮转）。
 
 ---
+!!!!!!!!大模型生成的格式内容，自己注意去掉一下，自己用工具画画图，做到真正的理解。
+
 ## 2. PP 模型实例化
 
 让“当前 rank（或本卡的某个 `vp_stage`）只实例化自己负责的 GPT 子模型”，并保留“首段做输入、末段做输出”的语义。其流程为：
@@ -99,8 +111,6 @@ main → pretrain → setup_model_and_optimizer → get_model → model_provider
 - `gpt_layer_specs.get_gpt_layer_local_spec()`
    返回 一层 Transformer 的构造蓝图（ModuleSpec）：包含 Self-Attention、MLP、LayerNorm、Bias-Dropout-Add 等子模块的实现（TE 或本地 kernel），供后续批量复制成“本段的多层”。
 
----
-
 ## 3. PP 获取需要执行的层数
 
 当前 Stage（或 `vp_stage`）需要实例化的层数由`get_num_layers_to_build(config, vp_stage)` 决定，记为 N，在典型同构场景下：无 VPP 时 N ≈ L / p；有 VPP（每卡 v 段）时 N ≈ L / (p·v)，其中 L 为全局模型的总层数（Transformer 总层数）。随后在实例化时通过`get_transformer_layer_offset(config, vp_stage)` 计算全局层号起点 `offset`，将局部层号 `1..N` 映射到全局层号，保证跨 Stage/虚拟段不重叠且顺序正确（VPP 为 stride = p 的交错映射）。
@@ -118,6 +128,7 @@ class TransformerBlockSubmodules:
             num_layers = get_num_layers_to_build(config, vp_stage)  # ← N
             return TransformerBlockSubmodules(layer_specs=[spec] * num_layers, layer_norm=LayerNormImpl)
 ```
+
 把“单层的构造规格（`spec`）”复制 N 份，形成本段需要实例化的层列表。对应地：
 
 ```python
@@ -146,7 +157,6 @@ def _build_layers(self):
 * `L=24, p=4, v=1` → `N=6`；每个 Stage 6 层、全局层号连续切分。
 * `L=24, p=4, v=2` → 每个 `vp_stage` `N=3`；同卡两个 `vp_stage` 交错映射到全局层序列（步长 4）。
 
----
 
 ## 4. 执行 PP 训练
 
@@ -184,8 +194,6 @@ def get_forward_backward_func():
 
 pipeline_parallel.schedules 模块作为 PP 的调度核心，为训练主循环提供一个统一入口`get_forward_backward_func()`，并且按配置返回如上所示，三选一的调度器，其调度器的内部依赖一组原子步骤，如：`forward_step`、`backward_step`、`deallocate_output_tensor`、`custom_backward` 等；并通过 pipeline_parallel.p2p_communication 完成跨 stage 的 send/recv 通信操作。
 
----
-
 ## 5. 前向过程
 
 Megatron-Core 的前向阶段由 `forward_step` 驱动；它调用你提供的 `forward_step_func` 完成本段模型的前向，并把结果交给 `forward_step_calc_loss` 做损失/统计或收集非损失数据。官方 API 对两者的职责与参数有明确约定。
@@ -193,6 +201,8 @@ Megatron-Core 的前向阶段由 `forward_step` 驱动；它调用你提供的 `
 此处，会判断 PP 阶段来获取不同的数据来源，若处于首段则直接从 `data_iterator` 取 batch 作为输入。若处于非首段则会使用上游阶段通过 P2P 发送下来的 `input_tensor`。返回值均是“前向输出对象（张量或张量集合）”。
 
 ### 5.1 `forward_step` 的最小调用约定
+
+!!!!!!!!!!格式尽可能简单
 
 `forward_step`的核心参数是`forward_step_func`：其函数签名为：forward_step_func(data_iterator, model) -> (output_obj, reducer_fn)，其输入输出为：
 - data_iterator：若首段直接取数据；非首段通常由调度层先 recv_forward 再传入。
@@ -204,8 +214,7 @@ Megatron-Core 的前向阶段由 `forward_step` 驱动；它调用你提供的 `
     三元组 (reduced_loss, num_tokens, other)：在二元组基础上，reduced_loss 还会按 num_tokens 进一步做 token 平均。
     任意对象 any_payload（如推理时需要的字典/列表/张量集合）：需在调用调度例程时设置 collect_non_loss_data=True（常与 forward_only=True 搭配），表示不计算损失，只收集前向产出。
 
-
-### 5.2 `forward_step` 伪代码：
+### 5.2 `forward_step` 伪代码
 
 ```pseudo
 def forward_step(forward_step_func, data_iterator, model,
@@ -268,7 +277,6 @@ def forward_step_calc_loss(model, output_tensor, loss_func, config, vp_stage,
     forward_data_store.append({"data": result})
     return {"data": result}
 ```
----
 
 ## 6. 反向过程
 
@@ -278,10 +286,12 @@ Megatron-Core 在 PP/VPP 调度中，把一次微批的反向拆成三件事：
 - 在需要回传时，用 `backward_step` 对本段做反向求梯（末段从 loss 起步、其它段先收梯度再回传）。
 - 反向调用里通过 `custom_backward` 直接走 C++ autograd 引擎，以配合“伪释放”，绕开 Python `torch.autograd.backward` 的形状强校验。
 
-
 ### 6.1 `deallocate_output_tensor(out, deallocate_pipeline_outputs=False)` —— 前向后立刻“伪释放”激活
 
+!!!!!标题长度
+
 已把前向输出发给下游后，把 `out.data` 置成标量，仅保留 `out.grad_fn`，以便稍后反向；显著降低峰值显存。应当紧跟 send_forward 之后调用。为什么可以这样做呢？需要从反向过程的核心原理来理解：
+
 反向传播依赖的是“计算图的结构 + 必要的中间缓存”而非边界输出张量本身的数值。在流水线里，一个 stage 的“边界输出”只是下游的输入；对本 stage 的反向而言，它只用来**作为反向的入口**。具体做梯度时，Autograd 会从这个入口节点（`grad_fn`）向上游回溯，逐个算子调用各自的反向函数，并使用这些算子在前向时已经保存到节点里的中间量（`saved_tensors`，如激活、索引、形状等）来计算本层参数梯度和输入梯度。也就是说：
 
 * **需要保留的**是这个“入口节点”以及整张图的**边连接关系**（`out.grad_fn` 及其 `next_functions`）；
@@ -299,8 +309,9 @@ deallocate_output_tensor(output)   # .data -> scalar, keep .grad_fn
 
 ### 6.2 `backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, config)`
 
-执行逻辑可以概括为：在流水线反向阶段，梯度沿着与前向相反的方向自下游逐段回传；若当前段是末段，没有更下游可依赖，因此从本地 loss 启动反向（此时 `output_tensor_grad=None`），由 `output_tensor` 的计算图入口触发回传；若非末段，则先通过 P2P `recv_backward` 接收下游传来的对本段输出的梯度 `output_tensor_grad`，再依据链式法则在本段内部计算并累积参数梯度以及对输入张量的梯度；函数的返回值即这份“对输入的梯度”，供调度层用 `send_backward` 继续向上游传递，而当当前段是首段时，上游已不存在，因此返回 `None` 终止回传。整个过程中，前向发送完边界输出后通常已用 `deallocate_output_tensor` 释放其数据，仅保留 `grad_fn` 作为反向入口，反向触发则通过 `custom_backward(output_tensor, output_tensor_grad)` 直接调用 C++ autograd 引擎，确保在不保留大激活数据的前提下，梯度仍能沿计算图正确回溯到本段输入与参数。
+执行逻辑可以概括为：在流水线反向阶段，梯度沿着与前向相反的方向自下游逐段回传；若当前段是末段，没有更下游可依赖，因此从本地 loss 启动反向（此时 `output_tensor_grad=None`），由 `output_tensor` 的计算图入口触发回传；若非末段，则先通过 P2P `recv_backward` 接收下游传来的对本段输出的梯度 `output_tensor_grad`，再依据链式法则在本段内部计算并累积参数梯度以及对输入张量的梯度；函数的返回值即这份“对输入的梯度”，供调度层用 `send_backward` 继续向上游传递，而当当前段是首段时，上游已不存在，因此返回 `None` 终止回传。
 
+整个过程中，前向发送完边界输出后通常已用 `deallocate_output_tensor` 释放其数据，仅保留 `grad_fn` 作为反向入口，反向触发则通过 `custom_backward(output_tensor, output_tensor_grad)` 直接调用 C++ autograd 引擎，确保在不保留大激活数据的前提下，梯度仍能沿计算图正确回溯到本段输入与参数。
 
 **反向过程伪代码**
 
@@ -321,7 +332,6 @@ def backward_step(input_tensor, output_tensor, output_tensor_grad, model_type, c
 ```
 
 > 注：前向已 `send_forward(output_tensor)` 并执行 `deallocate_output_tensor(output_tensor)`；此处只需 `output_tensor` 的 `grad_fn` 与 `grad_out` 即可完成回传。
-
 
 ### 6.3 `custom_backward(output, grad_output)` —— 直调 C++ 引擎配合“伪释放”
 
@@ -346,8 +356,6 @@ def custom_backward(output, grad_output):
   * **中间段**：先通过`recv_backward()` 得到下游梯度值`output_tensor_grad`，再进行`backward_step(...)`，链式计算得到本地梯度`grad_in` 后 `send_backward(grad_in)`回传；
 * **内部回传**：`backward_step` 内部用 `custom_backward` 触发 C++ 引擎回传，从而在“输出已瘦身”的前提下仍能沿计算图把梯度传播回输入。这些收发在调度里由 `P2PCommunicator` 的复合接口打包（如 `send_backward_recv_forward`/`send_forward_recv_backward`），以便通信与计算重叠。
 
---- 
-
 ## 7. 非交错 1F1B 调度的实现：`forward_backward_pipelining_without_interleaving(...)`
 
 在不开启 VPP 的情况下，按**1F1B**（One-Forward-One-Backward）方式对一个全局 batch 的 `num_microbatches` 进行流水处理：先 warmup，再进入 steady“每步 1F+1B”，最后 cooldown。只有末段返回 losses 字典，其它段返回空字典；该函数也支持 `forward_only / collect_non_loss_data`。
@@ -362,7 +370,6 @@ def custom_backward(output, grad_output):
 
 * 前向输出发给下游后，立刻 `deallocate_output_tensor(output)`：**清空 `.data`、保留 `grad_fn`**，显著降低峰值显存；稍后反向通过 `custom_backward(output, grad_out)` **直调 C++ autograd 引擎**沿图回溯。([NVIDIA Docs][1])
 * 只在该“非交错”调度里提供 `adjust_tensor_shapes_fn`，可对**收/发张量形状**做一次统一调整（适配自定义分片/布局）。([NVIDIA Docs][1])
-
 
 **1F1B 调度过程伪代码**
 
@@ -437,7 +444,6 @@ def forward_backward_pipelining_without_interleaving(
 
     return losses  # 末段：loss 字典；其它段：{}
 ```
----
 
 ## 8. 交错 1F1B 调度的实现：`forward_backward_pipelining_with_interleaving(...)`
 
@@ -518,8 +524,6 @@ def forward_backward_pipelining_with_interleaving(
 * **相同**：都有 warmup→steady→cooldown；只在末段汇总 `losses`；使用复合通信重叠 FWD/BWD；前向发送后立即“瘦身”输出、反向用 `custom_backward` 直调 C++ 引擎。
 * **不同**：交错版每步还要选择 chunk 并遵循 `get_schedule_table/convert_schedule_table_to_order` 的三元组时序，对每个 chunk 的收/发形状分别处理，并满足 VPP 的连续微批窗口/整除性等额外约束。
 
----
-
 ## 9. 无流水线：`forward_backward_no_pipelining(...)`
 
 当 PP size = 1（即没有跨卡流水线）或仅做单段验证/推理时，训练循环会走这条路径：不做任何 P2P 发送/接收，整模在本 rank 内完成 FWD/BWD/优化相关的梯度累积。末段/非末段的区分自然消失，`losses` 直接在本段汇总返回；若 `forward_only=True` 或 `collect_non_loss_data=True`，仅做前向与数据收集。
@@ -561,10 +565,10 @@ def forward_backward_no_pipelining(
 
     return losses  # 单段直接返回（若 forward_only=True 可能为空/只含指标）
 ```
+
 `forward_backward_no_pipelining` 是“单段”场景下的统一执行路径：不做跨段通信，在本 rank 内完成前向、（可选）反向与梯度累积；`losses` 直接在本地汇总，适用于 PP=1 或仅推理/验证的运行模式。
 
-
----
 ## 参考与引用
+
 - [1] https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/core/README.md
 - [2] https://docs.nvidia.com/megatron-core/developer-guide/latest/api-guide/pipeline_parallel.html#
