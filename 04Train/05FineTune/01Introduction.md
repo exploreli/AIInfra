@@ -1,6 +1,6 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
-# 大模型微调基础
+# 01.大模型微调基础
 
 > Author by: 许起星
 
@@ -8,7 +8,7 @@
 
 我们可以看到，微调在这个过程中占了不少比重，甚至可以说是发挥着极其重要的作用。广义而言，微调指的是预训练阶段之后让模型在小规模数据集上进行再次训练调整（包含指令微调、以及与人类意图对齐的强化学习），狭义而言，指的是指令微调（现在社区大部分人把指令微调等同于有监督微调，但二者在历史的概念上并不完全等同，后续我们会分析）。在本节中，我们将从整体地视角来看待把握广义上微调，主要帮读者捋顺微调是如何一步步发展的，以及当前主流微调方法有哪些，进而读者可以对微调有一个宏观上的把握。
 
-## 微调的发展之路
+## 1. 微调发展之路
 
 微调的发展大致可以分为三个阶段：特征迁移时代（2013–2017）、任务微调时代（2018–2020）和快速发展时代（2021–至今）。这三个阶段不单单反映了技术方法的演进，更体现了模型与人类交互方式的转变：从借用通用特征，到适配特定任务，再到理解人类意图并遵循价值观。微调的目标从提升单一任务指标，逐步发展为塑造模型的通用能力、安全边界与推理行为。
 
@@ -26,7 +26,7 @@ BERT 及其后继者（如 RoBERTa、ALBERT）迅速在 GLUE、SQuAD 等多个�
 
 ![PEFT 的发展趋势](images/01Introduction02.png)
 
-## 主流微调方法
+## 2. 主流微调方法
 
 随着微调技术的发展，一系列不同的方法应运而生，以应对不同的性能需求、资源限制和任务目标。目前，主流的微调方法可以从不同维度进行分类，而理解这些分类方式，有助于我们根据具体需求选择最合适的技术路线。本章将从以下几个核心维度展开介绍：
 
@@ -37,7 +37,7 @@ BERT 及其后继者（如 RoBERTa、ALBERT）迅速在 GLUE、SQuAD 等多个�
 
 最终我们整个微调章节还是主要聚焦于 PEFT 上来。
 
-### 按训练流程划分
+### 2.1 按训练流程划分
 
 为了完整清晰地描述整个流程，本文将一些与微调关系不那么密切的概念（如”预训练“等）也统一放在此处讲，如下图所示，金色部分指的是使用的场景不多，蓝色部分指的是常规训练流程中都会涉及的。
 
@@ -94,7 +94,7 @@ BERT 及其后继者（如 RoBERTa、ALBERT）迅速在 GLUE、SQuAD 等多个�
 
 > 示例 1: pinyin: wo ai ni → 我爱你  
 > 示例 2: pinyin: zao shang hao → 早上好  
-> 问题: pinyin: xue xi hao nan → 
+> 问题: pinyin: xue xi hao nan →
 
 模型就会根据根据上下文的规律，输出”学习好难“。
 
@@ -102,7 +102,7 @@ BERT 及其后继者（如 RoBERTa、ALBERT）迅速在 GLUE、SQuAD 等多个�
 
 ![微调流程](images/01Introduction07.png)
 
-### 按微调参数规模划分
+### 2.2 按微调参数规模划分
 
 根据在微调过程中更新的参数数量，微调方法主要分为两大类：**全参数微调（Full-Parameter Fine-Tuning, FFT）**和**参数高效微调（Parameter-Efficient Fine-Tuning, PEFT）**。这两种方法在资源消耗、存储成本和最终效果之间有着不同的权衡。在模型最初训练时，比如在 DeepSeek V3 完整的训练流程中，为了达到最佳性能，指令微调和 RLHF 一般都采取 FFT；而对于个人用户而言，由于是基于一个比较成熟的模型上进行再次训练的，再加上由于硬件资源限制，因此通过一般采取 PEFT，使得模型尽可能保持原本泛化能力的同时对特定领域的知识更加精通。
 
@@ -122,17 +122,17 @@ BERT 及其后继者（如 RoBERTa、ALBERT）迅速在 GLUE、SQuAD 等多个�
 
 总体而言，FFT 追求性能上限，适用于资源充足的工业级训练；而 PEFT 则在几乎不损失效果的前提下大幅降低门槛，推动了大模型微调在学术界和中小团队中的普及。两者并非互斥，而是根据实际需求的不同选择。
 
-### 高效的 PEFT 设计
+## 3. 高效底参微调 PEFT
 
+### PEFT 设计
 
+### PEFT 应用
 
-### PEFT 的多种应用
-
-## 总结与思考
+## 4. 总结与思考
 
 纵观大模型的发展路径，微调几乎贯穿了从预训练到落地应用的每一个关键环节。从最初的特征迁移到任务微调，再到当下的指令微调与偏好对齐，微调不仅仅是性能优化的手段，更是模型理解人类意图、遵循价值观的重要桥梁。与此同时，参数高效微调的兴起也让中小团队有机会参与到大模型的定制与创新中。总体来看，微调技术已经成为大模型走向实用化的一个必不可少的环节。
 
-## 参考与引用
+## 5. 参考与引用
 
 - [1] Wu X K, Chen M, Li W, Wang R, Lu L, Liu J, Hwang K, Hao Y, Pan Y, Meng Q, et al. LLM Fine-Tuning: Concepts, Opportunities, and Challenges[J]. Big Data and Cognitive Computing, 2025, 9(4): 87. DOI:10.3390/bdcc9040087.
 - [2] Devlin J, Chang M W, Lee K, et al. Bert: Pre-training of deep bidirectional transformers for language understanding[C]//Proceedings of the 2019 conference of the North American chapter of the association for computational linguistics: human language technologies, volume 1 (long and short papers). 2019: 4171-4186.
