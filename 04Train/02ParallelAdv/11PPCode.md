@@ -1,5 +1,6 @@
 # 分布式框架里的PP实现
 
+> Author by：高亮  
 
 ## 1. 模型运行入口与 PP / VPP 配置
 在Megatron-core分布式训练框架里，通过pretrain_gpt.py的main函数调用pretrain->get_model,get_model函数判断pipeline的划分策略，其过程为：
