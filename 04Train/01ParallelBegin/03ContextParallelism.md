@@ -4,6 +4,8 @@
 
 > Author by: 杨涵智
 
+!!!!!!!谈好的修改完就删掉
+
 !!!!!!!参考文章 https://zhuanlan.zhihu.com/p/698447429
 
 随着 AI 对长文本处理需求的提升，早期的短上下文大模型因上下文截断的局限难以满足实际任务，人们对大模型的长序列处理能力的需求水涨船高。然而，传统的并行技术难以针对性解决因序列长度扩展带来的内存与效率瓶颈问题。为此，本节聚焦序列并行的进阶方案——上下文并行，系统阐述其基本原理、与传统技术的差异及核心优势，说明其如何支撑大模型的长序列处理能力高效落地。
@@ -58,6 +60,8 @@ $$
 $$Attention(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
 
 SP 虽然能够拆分 LayerNorm、Dropout、全连接层等模块，但由于计算的耦合性，自注意力模块需要完整的 Q、K、V 才能计算，不能简单的拼接局部结果，这正是 SP 优化长序列的瓶颈——它的 QKV 计算依赖完整序列信息，限制了 SP 对长序列的并行优化能力。
+
+!!!!!!!!!!绘图，通过图来表示 CP 和 SP 的区别
 
 ### CP 并行原理与流程
 
@@ -123,11 +127,7 @@ CP 是 Megatron-LM 在 Ring-Attention 基础上的一次尝试，为模型面对
 ## 参考与引用
 
 - https://github.com/NVIDIA/Megatron-LM/blob/c3677e09aa4e2eec37048307bd795928b8f8324a/docs/source/api-guide/context_parallel.rst
-
 - https://blog.csdn.net/u012526436/article/details/109156096
-
 - https://zhuanlan.zhihu.com/p/405317918
-
 - Liu H, Zaharia M, Abbeel P. Ring attention with blockwise transformers for near-infinite context[J]. arXiv preprint arXiv:2310.01889, 2023.
-
 - Korthikanti V A, Casper J, Lym S, et al. Reducing activation recomputation in large transformer models[J]. Proceedings of Machine Learning and Systems, 2023, 5: 341-353.
