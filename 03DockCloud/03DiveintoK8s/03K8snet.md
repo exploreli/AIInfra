@@ -1,7 +1,8 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
 # K8S 容器持网络
-Author by: 何晨阳，ZOMI
+
+> Author by: 何晨阳
 
 要了解容器网络，首先要了解容器网络和传统物理机、虚拟机在架构设计和实现上的本质区别。
 

@@ -1,7 +1,8 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
 # K8S 容器持久化存储
-Author by: 何晨阳，ZOMI
+
+> Author by: 何晨阳
 
 容器持久化存储是有状态服务容器化的基石，解决了临时存储无法满足数据持久性、共享性和高可用性的核心痛点。从以下三个视角可以看出其存在的必要性与合理性：
 - **开发者视**：只需声明存储需求，无需关注底层实现。

@@ -1,6 +1,9 @@
 <!--Copyright © ZOMI 适用于[License](https://github.com/Infrasys-AI/AIInfra)版权许可-->
 
 # K8S 资源管理与作业调度
+
+> Author by: 何晨阳
+
 Kubernetes 的作业调度与资源管理系统如同集群的"智能大脑"和"资源管家"：
 - 调度器是决策中枢：通过智能算法将工作负载精准分配到最佳位置。
 - 资源管理是保障系统：确保每个应用获得所需资源而不相互干扰。
