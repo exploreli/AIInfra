@@ -185,9 +185,15 @@ k8s 官方给出三种日志收集方案：
 由应用直接将日志输出到日志平台，比如 Java 应用中的 appender。这种方案要求公司具有比较健壮的日志系统。
 
 
+## 总结与思考
+k8s容器监控已形成以Prometheus为核心的多层次生态，结合cAdvisor、Metrics Server等实现资源、应用、节点等多维指标采集。支持自动扩缩容、可视化和分布式追踪。
+
+未来在可观测性方面，可以结合AI/ML，来自动识别性能异常、故障根因、异常流量、攻击行为。并基于历史指标与日志数据预测资源瓶颈、服务异常，提前扩容或修复。这些能力可以进一步提升整个系统的可观测性与智能化能力。
+
+
 ## 参考文档
-https://www.cnblogs.com/chenqionghe/p/11718365.html
-https://www.cnblogs.com/cheyunhua/p/17126430.html
-https://www.cnblogs.com/evescn/p/18256900
-https://www.cnblogs.com/vinsent/p/15830271.html
-https://www.cnblogs.com/zhangmingcheng/p/16452365.html
+- https://www.cnblogs.com/chenqionghe/p/11718365.html
+- https://www.cnblogs.com/cheyunhua/p/17126430.html
+- https://www.cnblogs.com/evescn/p/18256900
+- https://www.cnblogs.com/vinsent/p/15830271.html
+- https://www.cnblogs.com/zhangmingcheng/p/16452365.html
