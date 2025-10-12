@@ -8,13 +8,25 @@
 
 ![](./images/04Dockerfile01.png)
 
-本文将以一份典型的 `Dockerfile` 为线索，深入剖析这三大技术在镜像构建（`docker build`）和容器运行（`docker run`）两个核心阶段，是如何协同工作，并具体产生了怎样的影响。
+在深入底层技术细节之前，我们先来理解一下 **Dockerfile → Docker 镜像 → Docker 容器**这个转化过程。
+
+我们可以用一个简单的比喻来理解这三者的关系：
+
+* Dockerfile 就像是一张建筑蓝图。它用文本指令详细描述了“最终成品”应该包含什么（需要哪些建材）、以及如何建造步骤。它本身是静态的、人类可读的。
+* Docker 镜像 (Image) 则是根据这份蓝图构建的“样板间”。它是只读的、不可变的。你不能直接“住”进这个样板间，但它包含了运行所需的一切：代码、运行时、库、环境变量和配置文件。
+* Docker 容器 (Container) 则是将这份样板间吊装到地基上、通上水电后可以入住的房子。它是镜像的一个运行实例，是动态的。你可以在容器里进行各种操作，就像在房子里生活一样，但你的所有改动都只发生在这个具体的实例中，不会影响到那份“样板间”本身。
+
+![](./images/04Dockerfile02.png)
+
+这张图清晰地展示了它们之间的生命周期关系：
+
+1. 编写 Dockerfile: 开发者定义应用环境所需的一切。
+2. 执行 docker build: Docker Engine 读取 Dockerfile，并执行其中的指令，最终生成一个只读的 Docker 镜像。这个镜像内部是分层的，我们稍后会详细探讨。
+3. 执行 docker run: Docker Engine 以这个只读镜像为基础，在其之上创建一个可写的容器层，然后启动一个进程。这个“只读镜像层 + 可写容器层”的组合，加上独立的进程空间、网络空间等，共同构成了一个运行中的Docker 容器。同一个镜像可以被用来创建无数个相互隔离的容器。
+
+现在，带着这个宏观概念，让我们以一份典型的 `Dockerfile` 为线索，深入剖析这三大技术在镜像构建（`docker build`）和容器运行（`docker run`）两个核心阶段，是如何协同工作，并具体产生了怎样的影响。
 
 > 注：以下讨论基于 Linux
-
-!!!!!!!!补充说明：
-!!!!!!!!!“Dockerfile → Docker 镜像 → Docker 容器”的转化关系，帮助理解后续技术拆解的核心链路：
-![](./images/04Dockerfile02.png)
 
 ## 1. 经典 Dockerfile
 
@@ -111,7 +123,9 @@ CMD ["python3", "main.py"]
 *   **Namespaces**：运行阶段为进程构建全方位的隔离视图，使其误以为“独占整个系统”，解决了“进程在哪个隔离空间运行”的问题；
 *   **Cgroups**：运行阶段为隔离环境设定不可逾越的资源边界，解决了“容器能使用多少宿主机资源”的问题。
 
-Docker 的伟大，并非发明了 Namespaces、Cgroups 或 UFS 这些技术——这些都是 Linux 内核早已存在的能力——而是将这些孤立、复杂的底层技术，通过一套简单、一致的工具链（`Dockerfile` 语法、`docker` 命令行）封装、编排起来，最终为用户呈现出“轻量、秒级启动、可移植”的容器体验。从 `Dockerfile` 中的一行指令，到运行态容器的每一个隔离细节，这趟“内核之旅”恰恰揭示了现代云原生技术的精髓——**对底层能力的极致抽象与协同**。
+Docker 的伟大，并非发明了 Namespaces、Cgroups 或 UFS 这些技术——这些都是 Linux 内核早已存在的能力——而是将这些孤立、复杂的底层技术，通过一套简单、一致的工具链（`Dockerfile` 语法、`docker` 命令行）封装、编排起来，最终为用户呈现出“轻量、秒级启动、可移植”的容器体验。另外，Docker 公司还管理了 Image 站以统一管理，极大方便了社区。
+
+![](./images/04Dockerfile03.gif)
 
 ## 5. 总结与思考
 
@@ -122,3 +136,4 @@ Docker 的伟大，并非发明了 Namespaces、Cgroups 或 UFS 这些技术—�
 - Docker 官方文档：[Docker Storage Drivers](https://docs.docker.com/storage/storagedriver/)
 - Linux 内核手册：[Namespaces](https://man7.org/linux/man-pages/man7/namespaces.7.html)
 - [Cgroups](https://man7.org/linux/man-pages/man7/cgroups.7.html)
+- [How to Build Docker Image : Comprehensive Beginners Guide](https://devopscube.com/build-docker-image/)

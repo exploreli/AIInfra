@@ -2,8 +2,6 @@
 
 # 02.计算优化：FA 演进
 
-Author by: 桑青园
-
 由于 Transformer 架构的核心模块——Attention 机制在计算时存在时空复杂度随序列长度呈二次方增长的问题，导致该结构在处理长序列时面临计算效率低下和显存占用较高的问题。为此，Flash Attention（以下简称 FA）提出通过分块计算（tilling）和算子融合（kernel fusion）的方式，不仅有效降低了显存占用，同时提升了训练速度和模型性能，接下来本文将详细介绍 FA 从 V1 到 V3 的演进及性能收益。
 
 ## 标准的 Attention 及访存、算力瓶颈
@@ -82,17 +80,18 @@ $$
 
 我们可以将其表示为：
 
-!!!!!!!!
-公式改为 markdown 
-
-![FA safe softmax](./images/02FlashAttn_04.png)
+$$
+m(x) := \max_i x_i, \quad f(x) := \left[ e^{x_1 - m(x)} \quad \dots \quad e^{x_B - m(x)} \right], \quad \ell(x) := \sum_i f(x)_i, \quad \text{softmax}(x) := \frac{f(x)}{\ell(x)}.
+$$
 
 在 safe softmax 的基础上，FA 通过引入了 $ m(x), \ell(x)$ 两个中间量实现了 SoftMax 分块算法，假设有向量 $x^{(1)}, x^{(2)} \in \mathbb{R}^{2B}$ ，拼接后的向量可以表示为 $x = [x^{(1)}, x^{(2)} ]\in \mathbb{R}^{2B}$ ， softmax 计算可以分解为:
 
-!!!!!!!!
-公式改为 markdown 
-
-![FA softmax tiling](./images/02FlashAttn_05.png)
+$$
+\begin{aligned}
+m(x) &= m\left(\left[ x^{(1)} \ x^{(2)} \right]\right) = \max\left(m(x^{(1)}), m(x^{(2)})\right), \quad f(x) = \left[ e^{m(x^{(1)}) - m(x)} f(x^{(1)}) \quad e^{m(x^{(2)}) - m(x)} f(x^{(2)}) \right], \\
+\ell(x) &= \ell\left(\left[ x^{(1)} \ x^{(2)} \right]\right) = e^{m(x^{(1)}) - m(x)} \ell(x^{(1)}) + e^{m(x^{(2)}) - m(x)} \ell(x^{(2)}), \quad \text{softmax}(x) = \frac{f(x)}{\ell(x)}.
+\end{aligned}
+$$
 
 根据公式，我们可以将完整的 softmax 计算分为 4 步：
 
@@ -114,7 +113,18 @@ $$
 
 如图所示，我们通过 Softmax tiling 替换掉完整 safe softmax 计算后，Attention 计算的整体流程可以表示为：
 
-![FA safe softmax forward compute](./images/02FlashAttn_07.png)
+$$
+\begin{aligned}
+\boldsymbol{m}^{(1)} &= \text{rowmax}(\mathbf{S}^{(1)}) \in \mathbb{R}^{B_r} \\
+\boldsymbol{\ell}^{(1)} &= \text{rowsum}(e^{\mathbf{S}^{(1)} - \boldsymbol{m}^{(1)}}) \in \mathbb{R}^{B_r} \\
+\tilde{\mathbf{P}}^{(1)} &= \text{diag}(\boldsymbol{\ell}^{(1)})^{-1} e^{\mathbf{S}^{(1)} - \boldsymbol{m}^{(1)}} \in \mathbb{R}^{B_r \times B_c} \\
+\mathbf{O}^{(1)} &= \tilde{\mathbf{P}}^{(1)} \mathbf{V}^{(1)} = \text{diag}(\boldsymbol{\ell}^{(1)})^{-1} e^{\mathbf{S}^{(1)} - \boldsymbol{m}^{(1)}} \mathbf{V}^{(1)} \in \mathbb{R}^{B_r \times d} \\
+\boldsymbol{m}^{(2)} &= \max(\boldsymbol{m}^{(1)}, \text{rowmax}(\mathbf{S}^{(2)})) = \boldsymbol{m} \\
+\boldsymbol{\ell}^{(2)} &= e^{\boldsymbol{m}^{(1)} - \boldsymbol{m}^{(2)}} \boldsymbol{\ell}^{(1)} + \text{rowsum}(e^{\mathbf{S}^{(2)} - \boldsymbol{m}^{(2)}}) = \text{rowsum}(e^{\mathbf{S}^{(1)} - \boldsymbol{m}}) + \text{rowsum}(e^{\mathbf{S}^{(2)} - \boldsymbol{m}}) = \boldsymbol{\ell} \\
+\tilde{\mathbf{P}}^{(2)} &= \text{diag}(\boldsymbol{\ell}^{(2)})^{-1} e^{\mathbf{S}^{(2)} - \boldsymbol{m}^{(2)}} \\
+\mathbf{O}^{(2)} &= \text{diag}(\boldsymbol{\ell}^{(1)} / \boldsymbol{\ell}^{(2)})^{-1} \mathbf{O}^{(1)} + \tilde{\mathbf{P}}^{(2)} \mathbf{V}^{(2)} = \text{diag}(\boldsymbol{\ell}^{(2)})^{-1} e^{\mathbf{S}^{(1)} - \boldsymbol{m}} \mathbf{V}^{(1)} + \text{diag}(\boldsymbol{\ell}^{(2)})^{-1} e^{\mathbf{S}^{(2)} - \boldsymbol{m}} \mathbf{V}^{(2)} = \mathbf{O}.
+\end{aligned}
+$$
 
 其中，$B_r$ 为 Q 的块大小，$B_c$ 为 K，V 的分块大小，对于不同大小的数据，我们仅需迭代这个计算过程就可以得到完成的 Attnetion 结果。  
 
@@ -138,10 +148,7 @@ $$
 
 ### 性能分析与总结
 
-如图为官方论文中提供的性能数据，使用 FA 训练 GPT-2 相比于 Huggingface 实现可以加速 3 倍,相比于 Megatron-LM 实现可以加速 1.7 倍：
-
-!!!!!!!
-论文引用的地方
+如图为论文[FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness](https://arxiv.org/pdf/2205.14135)中提供的性能数据，使用 FA 训练 GPT-2 相比于 Huggingface 实现可以加速 3 倍,相比于 Megatron-LM 实现可以加速 1.7 倍：
 
 ![FA speedup](./images/02FlashAttn_08.png)
 
@@ -151,15 +158,68 @@ $$
 
 ## Flash Attention V2
 
-在 FA V1 的基础上，FA2 针对反向传播、因果掩码（Causal Mask）以及 GPU 的并行计算等方面进行了更深入的优化，进一步提升了性能  
+在FA V1 算法的基础上，FA2 主要针对FA V1的工程实现进行优化，核心目标是最大化 GPU 矩阵计算单元（Tensor Core）的利用率，最小化冗余计算与内存通信，主要通过：
+* 调整算法以减少非矩阵乘法的浮点运算次数，增加Tensor Cores计算的比例；
+* 引入序列维度的并行，单注意力Head 也可以通过跨不同线程块并行化注意力计算；
+* 在每个线程块内部，通过在不同线程束之间分配任务，减少通过共享内存进行的通信开销
 
-### 算法优化
+### 算法层面：减少非矩阵乘法（Non-Matmul）计算量
+GPU 内置矩阵乘法（Matmul）专用加速单元（Tensor Core），以 A100为例，其计算性能与普通浮点计算存在量级差距：在 FP32 精度下，非矩阵乘法的普通浮点计算吞吐量仅为 19.5 TFLOPs/s；而在 FP16/BF16 精度（Transformer 模型常用精度）下，Tensor Core 的矩阵乘法最大理论吞吐量可达 312 TFLOPs/s，性能是普通浮点计算的 16 倍。因此，为了充分利用GPU的计算资源，我们需要尽可能减少非 Matmul 计算占比，提升整体计算效率。
 
-### 并行策略重构
+FA V1 原方案在分块计算注意力时，存在冗余缩放操作：每处理一个分块都需要对中间输出进行实时缩放，以第2个分块为例，其计算公式为：
+$$
+O^{(2)} = diag\left(\frac{\ell^{(1)}}{\ell^{(2)}}\right)^{-1} O^{(1)} + diag\left(\ell^{(2)}\right)^{-1} e^{S^{(2)}-m^{(2)}} V^{(2)}
+$$
 
-### warps 间协作
+其中 $O^{(1)}$为前一分块输出，${\ell^{(j)}}$ 为分块的指数和，$m^{(2)}$ 为分块的行最大值，$S^{(2)}$ 为分块的注意力分数矩阵。
+
+FA V2 通过两项核心调整消除冗余：
+
+延迟缩放策略：更新output时不计算$diag\left(\ell^{(2)}\right)^{-1}$, 仅在所有分块处理完成后，一次性用最终的${\ell^{(last)}}$缩放得到最终结果，减少缩放次数。
+
+精简存储变量：仅存储 Softmax 计算的对数求和（LogSumExp）$L^{(j)} = m^{(j)} + \log\left(\ell^{(j)}\right)$，而非同时存储行最大值 $m^{(j)}$ 与指数和 $\ell^{(j)}$，以此减少内存占用。
+
+调整后的分块计算公式为：
+$$
+O^{(2)} = diag\left({\ell^{(1)}}\right)^{-1} O^{(1)} + e^{S^{(2)}-m^{(2)}} V^{(2)}
+$$
+这种方式不仅减少前向传播的内存占用，也降低了反向传播时的依赖数据量。反向计算的核心需求是高效推导 \(Q\)、\(K\)、\(V\) 的梯度（\(dQ\)、\(dK\)、\(dV\)），FA V1 原方案需从存储的 $m^{(j)}$ 和 $\ell^{(j)}$重构中间变量，引入额外非 Matmul 计算，FA V2 直接复用前向存储的 LogSumExp：反向传播时，仅通过前向阶段保存的$L^{(j)}$ 而非$m^{(j)}$ 和 $\ell^{(j)}$推导梯度，省去中间变量重构步骤，进一步减少非 Matmul 计算占比。
+
+除此之外，FA V2也在功能上进行了扩展，引入了Causal mask及多类型注意力：
+
+Causal mask：在语言模型等时序场景中，因果掩码用于限制注意力流动 —— 确保模型预测第 \(i\) 个位置时，仅能依赖前 \(i-1\) 个位置的信息（即注意力矩阵 \(S\) 中，下三角区域有效，上三角区域需屏蔽）。FA V2 对注意力矩阵分块后，直接跳过 “列索引> 行索引” 的无效块（即上三角区域的分块），无需对这些块进行计算或掩码填充，使因果掩码场景下的计算速度，相较于 “无因果掩码的基础注意力计算” 提升 1.7-1.8 倍，同时避免无效计算带来的内存与算力浪费。
+
+多类型注意力（Multi-query attention、Grouped-query attention）支持：FA V2 除支持传统 Multi-Head Attention（MHA）外，新增对 Multi-Query Attention（MQA） 和 Grouped-Query Attention（GQA） 的适配，满足不同场景下 “性能 - 效果 - 存储” 的权衡需求。
+
+### 并行策略重构：增加序列长度维度的并行
+在GPU架构中，Threads（线程）、Warps（线程束）和 Thread Block（线程块）是实现高效并行计算的三层核心结构。在执行计算任务（Kernel）时，GPU会启动大量Threads，这些Threads先组成Thread Block，Blocks被调度到GPU的计算核心（SM，流多处理器）上运行。其中，Thread是最小的计算单元，每个 Thread执行相同Kernel代码处理不同数据，拥有独立寄存器存储局部数据；32个Threads组成的Warp是最小的调度单元，同一Warp内Thread同步执行指令，可通过Shuffle指令实现纳秒级低延迟通信或合作执行矩阵乘法的计算；由多个Warp组成的Thread Block是可以独立调度到SM的任务单元，块内Warp可以通过共享内存（SRAM）通信。因此，Kernel的实际计算流程可以理解为：从HBM中加载数据到共享内存，Thread读取至寄存器并进行计算，通过Shuffle/共享内存进行通信及同步，最后将结果汇总后写回HBM。
+
+考虑到GPU的三级并行计算结构，FA V1依赖两个并行维度“批次（Batch）”和“注意力头（Heads）”分配GPU资源：不同样本/注意力头可分配给不同的线程块处理，线程块总数为 “批次大小 × 注意力头数”，当batch_size 和 num_heads 较大时，线程块可充分利用 GPU 的流多处理器（SM），如 A100 有 108 个 SM，若线程块数≥108，可实现 SM 满负载。但在长序列场景下，由于内存限制需缩小批次和注意力头数，线程块的数量也同步降低，导致并行效率下降。因此 FA V2引入序列长度维度的并行，结合GPU 硬件架构（SM→线程块→线程束）的三层协同策略，让单个线程块内的线程束（warp）并行处理序列的不同位置，从而充分利用GPU的计算资源。序列维度并行方式如下：
+
+* 低秩矩阵分解：首先将注意力矩阵分解成两个低秩矩阵，分别是QK'和V'，其中QK'的形状是[batch_size, num_heads, seq_len, rank]， V'的形状是[batch_size, num_heads, rank, head_dims]
+* 线程块分配：与 FA V1一致，FA V2将每个注意力头的计算分配给一个线程块，共有（batch_size * num_heads）个线程块，每个线程块在一个SM上运行，通过SM的分时复用让每个SM轮流处理多个线程块，避免 SM 空闲
+* 线程束拆分计算：这是实现“序列维度的并行”的核心操作，在单个线程块内，按 “序列位置” 将计算任务平均分配给每个线程束（warp）。如果序列长度是1024，线程束大小是32，那么每个线程束处理32个序列位置
+* 结果合并：由于各warp处理的序列位置相互独立，无需跨 warp 同步：每个 warp 计算完32个位置的输出后，直接写入线程块的共享内存；所有 warp 完成计算后，线程块将共享内存中的结果拼接，得到“one batch + one head”的完整序列输出；最终，所有线程块的输出汇总，得到整个 batch 的注意力计算结果。
+
+需要注意的是，在实际的计算过程中，前向传播与反向的切分维度并不相同，如图所示：
+![FA V2 parallel](./images/02FlashAttn_09.png)
+
+这是由于在前向过程中，我们计算是对每个Q，计算其与所有 KV 的交互，输出 O，且不同Q的计算完全独立，因此，按行切分可以使多个Thread Block同时处理不同行；而反向时的计算是基于前向的输出，回传计算 dQ（Q 的梯度）、dK（K 的梯度）、dV（V 的梯度），其中 不同 KV 的梯度计算完全独立，因此，按列切分后只需读取所有 Q 的梯度信息即可完成计算。如果反向也切分行块（按 Q 维度），计算 dK/dV 时需汇总所有Q对单个KV的梯度贡献，此时不仅 dQ 需要通信，dK 和 dV 也需要线程束间同步，频繁跨块通信同步大幅增加了延迟。
+
+因此，FA V2 在前向传播中，使每个Thread Blocks负责处理注意力矩阵的一个行块；在反向传播中，使每个Thread Blocks负责处理注意力矩阵的一个列块，既保证每个线程块能独立完成任务（无依赖、无通信），也最大化利用了 GPU 多线程块的并行算力。
+
+### Warp级性能优化：减少warp间共享内存通信
+在GPU 中，线程块内的线程按 warp（32 线程一组）调度，warp 间通过共享内存通信，而共享内存读写速度远低于寄存器，因此减少 warp 间通信是关键。
+
+以下图为例，在FA V1中，外循环针对输入序列中的K和V进行遍历，而内循环则遍历输入序列中的Q。每个线程块会将K和V分成4个warp，并允许所有warp都能访问Q。在这个过程中，每个线程束通过矩阵乘法得到${QK^T}$的一个子矩阵，随后需与 V 的一个子矩阵相乘，并通过线程束间通信汇总计算结果${O_i}$。然而，每次内循环操作都会导致${O_i}$的更新。这就导致每个warp都需要频繁从HBM读取和写入${O_i}$。这种方案涉及大量HBM的读写，效率较低。
+
+而FA V2则采用了不同的策略。它将外循环移到了Q上，将内循环移到了K和V上，并将Q分成了4个warp，允许所有warp都能访问K和V。每个warp通过矩阵乘法得到${QK^T}$的一个子矩阵后，只需与共享的 V 子矩阵相乘，即可得到输出结果中对应的子矩阵，整个过程中，线程束之间无需通信。这种方式的好处在于FA V2中，每次内循环处理的都是存储在SRAM上的${O_i}$而不是从HBM中频繁读写，从而提高效率。
+
+![FA V2 warp](./images/02FlashAttn_10.png)
 
 ### 性能分析
+如[FlashAttention-2:Faster Attention with Better Parallelism and Work Partitioning](https://arxiv.org/pdf/2307.08691)论文中所示，FA V2相比于FA V1 前向 + 反向传播速度提升约2倍，随序列长度逐渐增加，性能提升也更为明显。
+![FA V2 benchmark](./images/02FlashAttn_11.png)
 
 ## Flash Attention V3
 

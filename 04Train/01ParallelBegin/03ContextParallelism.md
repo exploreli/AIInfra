@@ -16,10 +16,10 @@
 
 鉴于短上下文模型受限于上下文窗口，所以人们首先以突破固定的上下文窗口为核心方向。2019 年诞生的 Transformer-XL 就是这一阶段的代表性成果，并且成功证明了突破固定的上下文窗口对长序列建模的意义。Transformer-XL 的核心优化在于引入了以下两点：
 
-![](images/03.ContextParallelism06.png)
+![](./images/03.ContextParallelism06.png)
 <center>经典 Transformer 训练和评估阶段</center>
 
-![](images/03.ContextParallelism07.png)
+![](./images/03.ContextParallelism07.png)
 <center>Transformer-XL 训练和评估阶段</center>
 
 1. 片段递归：Transformer-XL 和 Transformer 相同点在于在训练时会以固定长度的片段进行输入，区别在于 Transformer-XL 会缓存上一片段的状态，重复使用上个时间片的隐层状态来计算当前片段。从图中可以直观地看出，在训练阶段，Transformer 前后片段是独立的，显然这与事实不符，而 Transformer-XL 缓存了前一个片段的输出序列，在计算下一个片段的输出时会使用上一个片段的缓存信息，将前后片段的信息进行融合。在评估阶段，Transformer 会采用同训练阶段一致的划分长度，仅预测最后一个位置的 token，完成后整体向后移动一位，但是这种方式需要频繁计算新的片段，计算代价很大；相对的，由于前后片段的重复度很高，Transformer-XL 选择直接使用前一个片段的输出序列，不需要重复计算，加快了推理速度。
@@ -40,7 +40,7 @@ $$
 
 以上两种模型均进行了架构创新，而基于 Transformer 的改进方案同样不断演进，其中极具代表性的就是 2020 年提出的 Longformer，通过滑动窗口注意力和全局注意力的混合机制，在保持 Transformer 架构兼容性的同时，将计算复杂度降至 O(N×w)，其中 w 为窗口大小。Longformer 既降低了计算成本，又确保了核心信息的全局关联。图中(a)是经典的 Self-Attention 模式，每个 token 都要和序列中其他所有的 token 交互，时间复杂度达到 O(N<sup>2</sup>)。(b)、(c)、(d)则是 Longformer 提出的三种 Self-Attention 模式，分别是滑动窗口注意力机制（Sliding Window Attention）、空洞滑窗机制（Dilated Sliding Window）和融合全局信息的滑动窗口机制（Global+Sliding Window）。由图中的数据我们可以很直观的看出 Longformer 在时间复杂度上做出的巨大优化。
 
-![](images/03.ContextParallelism08.png)
+![](./images/03.ContextParallelism08.png)
 <center>经典 Self-Attention 和 Longformer 提出的 Self-Attention</center>
 
 然而，大模型长序列能力的发展始终面临着能力与资源的矛盾：序列长度的不断增加必然导致激活值和 KV 缓存的内存占用激增。传统的张量并行（Tensor Parallelism，TP）和流水线并行（Pipeline Parallelism，PP）主要解决参数存储问题，无法针对序列维度的并行压力提供有效优化；而序列并行（Sequence Parallelism，SP）虽然尝试查分序列，却因自注意力模块对完整 QKV 的依赖而效果有限。正是这一核心矛盾，催生了上下文并行（Context Parallelism，CP）的诞生。
@@ -74,25 +74,25 @@ CP 正是要解决 SP 中的自注意力序列并行问题，CP 通过 Flash Att
 
 如上文所说，我们要将输入切分，输入的 QKV 经处理后得到[Q0,Q1,Q2,Q3],[K0,K1,K2,K3],[V0,V1,V2,V3]，并将设备组划分为 rank0，rank1，rank2，rank3。每个设备组获取初始的输入组，大小为[b,sq/4,np,bn]。
 
-![](images/03.ContextParallelism01.png)
+![](./images/03.ContextParallelism01.png)
 
 <center>图 1 输入数据处理示意图（后续需要重新起名、优化画面）</center>
 
 第一次计算时，每个 rank 使用初始分配的输入，通过 Flash Attention2 模块计算得到第一个输出 O_x0，这里 x 是对应 rank 的编号。除第一次外，后续的 QKV 计算中，单步计算后需要进行一次对 L 值的修正（FA 计算中的 logsumexp 值）。
 
-![](images/03.ContextParallelism02.png)
+![](./images/03.ContextParallelism02.png)
 
 <center>图 2 第一轮计算（后续需要重新起名、优化画面）</center>
 
 后续计算时，对 rank 的 KV 进行轮换，每个 rank 与自己相邻的 rank 进行环形 P2P 通信，传出自己的 KV 值，拿到邻居的 KV 值用于下一轮计算。
 
-![](images/03.ContextParallelism03.png)
+![](./images/03.ContextParallelism03.png)
 
 <center>图 3 数据传输（后续需要重新起名、优化画面）</center>
 
 数据轮换共进行 cp_size-1 次，以图中为例，每个 rank 得到 4 个输出，每个 rank 将自己的分块结果进行聚合相加得到结果 O_x。
 
-![](images/03.ContextParallelism04.png)
+![](./images/03.ContextParallelism04.png)
 
 <center>图 4 计算结果（后续需要重新起名、优化画面）</center>
 
@@ -104,7 +104,7 @@ CP 正是要解决 SP 中的自注意力序列并行问题，CP 通过 Flash Att
 
 图 5 展示了 TP2CP2 配置下的 Transformer 层，以此为例，若处理长度为 8K 的序列，每个 GPU 仅负责 4K token 的计算。
 
-![](images/03.ContextParallelism05.png)
+![](./images/03.ContextParallelism05.png)
 
 <center>图 5 TP2CP2 配置下的 Transformer 层通信示意图（后续需要重新绘制）</center>
 

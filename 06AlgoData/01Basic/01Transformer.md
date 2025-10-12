@@ -25,7 +25,7 @@
 
 LSTM 的结构如下图所示：
 
-![LSTM 结构示意图](images/01Transformer01.png)
+![LSTM 结构示意图](./images/01Transformer01.png)
 
 
 通过门控机制，LSTM 在一定程度上缓解了 RNN 的梯度消失问题，使模型能够在较长序列中保持信息传递。但它仍存在结构复杂、训练速度慢、并行性差等不足，对超长依赖关系的建模也不够稳定。这些局限使研究者开始探索更高效的序列建模方法，最终催生了 **Transformer** ——一种彻底摒弃循环结构、完全基于 **Attention 机制** 的新型架构。
@@ -41,7 +41,7 @@ Seq2Seq 模型包含两个主要部分：
 
 下图展示了经典的 Encoder-Decoder 结构：
 
-![Encoder-Decoder 结构示意图](images/01Transformer02.png)
+![Encoder-Decoder 结构示意图](./images/01Transformer02.png)
 
 在这个结构中，编码器将输入句子（如 “Are you free tomorrow?”）编码为一个固定长度的“思维向量”（thought vector），再由解码器根据该向量生成目标句子（如 “Yes, what’s up?”）。
 虽然 Seq2Seq 能在一定程度上建模序列关系，但由于将整句信息压缩为单一向量，长句易导致语义丢失；同时模型仍依赖 RNN/LSTM 的顺序计算，无法实现高效并行，对远距离依赖关系的建模能力也较为有限。这些缺陷直接促成了 **Transformer** 的诞生，它通过注意力机制实现了对整个序列的全局建模。
@@ -55,7 +55,7 @@ Transformer 摒弃循环结构，完全基于 **Attention** 来学习序列间�
 ## Transformer 的核心结构（TODO）
 Transformer 模型由 Vaswani 等人在 2017 年提出，首次完全舍弃循环结构，以自注意力机制为核心构建了一个可并行计算的 Encoder-Decoder 架构。
 
-![Transformer 原始架构](images/01Transformer03.png)
+![Transformer 原始架构](./images/01Transformer03.png)
 
 如上图所示，Transformer 由 **编码器（Encoder）** 和 **解码器（Decoder）** 组成：
 
@@ -72,7 +72,7 @@ Transformer 模型由 Vaswani 等人在 2017 年提出，首次完全舍弃循�
 在 Transformer 的输入层中，首先要对文本进行 **Tokenization（分词）**，将句子拆解成若干基本单元（token），再为每个 token 分配唯一的索引编号。随后，这些编号会映射到一个高维向量空间中，形成 **词嵌入（Word Embedding）**，用于表示每个词在语义空间中的位置。由于 Transformer 不再具有 RNN 那样的时序结构，因此模型需要额外加入 **位置编码（Positional Encoding）**，用以描述序列中各词的相对与绝对位置关系。位置编码通过固定或可学习的向量形式，与词嵌入逐元素相加，使模型能够在并行计算的同时保留顺序信息。最终，经过嵌入与位置编码的融合，输入文本被转换为连续的数值矩阵，成为后续 **自注意力层（Self-Attention）** 建模的基础。
 
 
-![Transformer 输入示意图](images/01Transformer03.png)
+![Transformer 输入示意图](./images/01Transformer03.png)
 
 上图直观展示了 Transformer 在输入层中的数据处理过程。最底部的句子 *“I ate an women”* 代表原始输入文本，首先经过 **Tokenize（分词）** 操作，被拆解为若干基本单元 —— *I*、*ate*、*an*、*apple*、*<eos>*。每个蓝色方块代表一个 token，经分词后被送入橙色的 **Embedding Layers（词嵌入层）**。在该层中，每个 token 会被映射为一个高维向量，用绿色方块矩阵表示，每个向量的维度大小为 *d_model*。这些高维向量不仅捕捉了词语的语义信息，也使模型能够在连续空间中处理文本。随后，模型会在这些嵌入上叠加 **位置编码（Positional Encoding）**，以显式引入词序信息。通过这种方式，Transformer 在实现高效并行计算的同时，仍能理解句子中各单词的相对顺序。最终，这些融合了语义与位置信息的嵌入矩阵将作为输入，送入后续的 **自注意力层（Self-Attention）** 进行上下文建模。
 
