@@ -4,7 +4,7 @@
 
 Author by: SingularityKChen
 
-!!!!!!! XCCL是什么？
+!!!!!!! XCCL 是什么？
 
 本章聚焦“AI 与通信的关系”与“XCCL 基本架构”。我们将围绕**并行策略、集合通信原语、通信量与拓扑、计算/通信重叠**这一主线，解释不同并行方式为何需要 AllReduce / AllGather / All2All / Send-Recv 等原语、需要传多少数据、在真实网络与实现中如何落地，以及 XCCL 在训练框架与通信库之间的承上启下角色。
 

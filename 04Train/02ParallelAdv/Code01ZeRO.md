@@ -2,6 +2,8 @@
 
 # CODE 01: ZeRO 显存优化实践
 
+> Author by: 许灿岷
+
 在大模型训练过程中，显存限制是主要瓶颈之一。微软开发的**ZeRO**（Zero Redundancy Optimizer）技术通过消除数据并行中的显存冗余，显著降低了训练大模型所需的显存。本实验将深入探讨 ZeRO 的各级优化技术，通过实际代码演示和分析，理解不同级别的 ZeRO 如何实现显存优化。
 
 ## 1. 模型显存占用分析
@@ -18,7 +20,7 @@
 ```text
 总显存 = 参数显存 + 梯度显存 + 优化器状态显存 + 激活值显存
 参数显存 = 参数量 × 4 字节（FP32）
-梯度显存 = 参数量 × 4 字节（FP32）  
+梯度显存 = 参数量 × 4 字节（FP32）
 优化器状态显存 = 参数量 × 16 字节（FP32 Adam）
 ```
 
@@ -32,22 +34,22 @@ from collections import defaultdict
 
 class MemoryAnalyzer:
     """简化的显存分析工具类"""
-    
+
     def __init__(self):
         self.memory_stats = defaultdict(list)
         self.previous_allocated = 0
-    
+
     def record(self, tag=''):
         """记录当前显存使用情况"""
         allocated = torch.cuda.memory_allocated() / 1024**3  # GB
         reserved = torch.cuda.memory_reserved() / 1024**3    # GB
         delta = allocated - self.previous_allocated
         self.previous_allocated = allocated
-        
+
         self.memory_stats['allocated'].append(allocated)
         self.memory_stats['reserved'].append(reserved)
         self.memory_stats['delta'].append(delta)
-        
+
         print(f"{tag}: 已分配: {allocated:.2f}GB, 变化: {delta:+.2f}GB")
         return allocated
 
@@ -66,39 +68,39 @@ def analyze_memory():
     if not torch.cuda.is_available():
         print("CUDA 不可用，无法进行显存分析")
         return
-        
+
     torch.cuda.empty_cache()
     analyzer = MemoryAnalyzer()
-    
+
     # 记录初始状态
     analyzer.record("初始状态")
-    
+
     # 创建模型
     model = create_model().cuda()
     analyzer.record("模型创建后")
-    
+
     # 创建优化器
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     analyzer.record("优化器创建后")
-    
+
     # 模拟数据
     inputs = torch.randn(32, 2048).cuda()
     targets = torch.randn(32, 2048).cuda()
     analyzer.record("数据加载后")
-    
+
     # 前向传播
     outputs = model(inputs)
     loss = F.mse_loss(outputs, targets)
     analyzer.record("前向传播后")
-    
+
     # 反向传播
     loss.backward()
     analyzer.record("反向传播后")
-    
+
     # 优化器步骤
     optimizer.step()
     analyzer.record("优化器更新后")
-    
+
     return analyzer.memory_stats
 
 # 执行分析
@@ -146,28 +148,28 @@ ZeRO-1 优化器状态分片
 ```python
 class Zero1Optimizer:
     """简化的 ZeRO-1 优化器实现"""
-    
+
     def __init__(self, params, optimizer_class=torch.optim.Adam, shard_size=4, **kwargs):
         self.params = list(params)
         self.shard_size = shard_size
         self.shards = self._create_shards()
-        
+
         # 为每个分片创建优化器
         self.optimizers = [optimizer_class(shard,** kwargs) for shard in self.shards]
-    
+
     def _create_shards(self):
         """将参数分成多个分片"""
         shards = []
         for i in range(0, len(self.params), self.shard_size):
             shards.append(self.params[i:i+self.shard_size])
         return shards
-    
+
     def zero_grad(self):
         """清零梯度"""
         for param in self.params:
             if param.grad is not None:
                 param.grad.zero_()
-    
+
     def step(self):
         """执行优化步骤，只更新分片参数"""
         for optimizer in self.optimizers:
@@ -177,24 +179,24 @@ class Zero1Optimizer:
 def test_zero1():
     if not torch.cuda.is_available():
         return
-        
+
     torch.cuda.empty_cache()
     analyzer = MemoryAnalyzer()
-    
+
     model = create_model().cuda()
     analyzer.record("模型创建后")
-    
+
     # 使用 ZeRO-1 优化器
     optimizer = Zero1Optimizer(model.parameters(), shard_size=4, lr=1e-3)
     analyzer.record("ZeRO-1 优化器创建后")
-    
+
     # 简单训练步骤
     inputs = torch.randn(32, 2048).cuda()
     outputs = model(inputs)
     loss = F.mse_loss(outputs, torch.randn_like(outputs))
     loss.backward()
     optimizer.step()
-    
+
     analyzer.record("训练一步后")
     return analyzer.memory_stats
 
@@ -225,11 +227,11 @@ ZeRO-2 在 ZeRO-1 的基础上进一步优化，不仅分片优化器状态，�
 ```python
 class Zero2Optimizer(Zero1Optimizer):
     """简化的 ZeRO-2 优化器实现，在 ZeRO-1 基础上增加梯度分片"""
-    
+
     def __init__(self, params, optimizer_class=torch.optim.Adam, shard_size=4, **kwargs):
         super().__init__(params, optimizer_class, shard_size,** kwargs)
         self.grad_shards = self._create_shards()  # 梯度分片与参数分片对应
-    
+
     def step(self):
         """执行优化步骤，只处理分片梯度"""
         # 模拟梯度分片聚合
@@ -239,7 +241,7 @@ class Zero2Optimizer(Zero1Optimizer):
                 if param.grad is not None:
                     # 模拟分布式梯度聚合
                     param.grad = param.grad.contiguous()
-            
+
             # 更新当前分片
             self.optimizers[i].step()
 
@@ -247,24 +249,24 @@ class Zero2Optimizer(Zero1Optimizer):
 def test_zero2():
     if not torch.cuda.is_available():
         return
-        
+
     torch.cuda.empty_cache()
     analyzer = MemoryAnalyzer()
-    
+
     model = create_model().cuda()
     analyzer.record("模型创建后")
-    
+
     # 使用 ZeRO-2 优化器
     optimizer = Zero2Optimizer(model.parameters(), shard_size=4, lr=1e-3)
     analyzer.record("ZeRO-2 优化器创建后")
-    
+
     # 简单训练步骤
     inputs = torch.randn(32, 2048).cuda()
     outputs = model(inputs)
     loss = F.mse_loss(outputs, torch.randn_like(outputs))
     loss.backward()
     optimizer.step()
-    
+
     analyzer.record("训练一步后")
     return analyzer.memory_stats
 
@@ -301,23 +303,23 @@ ZeRO-3 的工作原理：
 ```python
 class Zero3Model(nn.Module):
     """简化的 ZeRO-3 参数分片模型"""
-    
+
     def __init__(self, base_model, shard_id=0, num_shards=4):
         super().__init__()
         self.shard_id = shard_id
         self.num_shards = num_shards
         self.layers = nn.ModuleList()
-        
+
         # 分片模型层
         total_layers = len(base_model)
         layers_per_shard = (total_layers + num_shards - 1) // num_shards
         start = shard_id * layers_per_shard
         end = min(start + layers_per_shard, total_layers)
-        
+
         # 只保留当前分片负责的层
         for i in range(start, end):
             self.layers.append(base_model[i])
-    
+
     def forward(self, x):
         """前向传播，只计算当前分片"""
         for layer in self.layers:
@@ -328,27 +330,27 @@ class Zero3Model(nn.Module):
 def test_zero3():
     if not torch.cuda.is_available():
         return
-        
+
     torch.cuda.empty_cache()
     analyzer = MemoryAnalyzer()
-    
+
     # 创建基础模型
     base_model = create_model()
     # 创建分片模型（只加载 1/4 的参数）
     model = Zero3Model(base_model, shard_id=0, num_shards=4).cuda()
     analyzer.record("ZeRO-3 模型创建后")
-    
+
     # 优化器只需要优化部分参数
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     analyzer.record("优化器创建后")
-    
+
     # 简单训练步骤
     inputs = torch.randn(32, 2048).cuda()
     outputs = model(inputs)
     loss = F.mse_loss(outputs, torch.randn_like(outputs))
     loss.backward()
     optimizer.step()
-    
+
     analyzer.record("训练一步后")
     return analyzer.memory_stats
 
@@ -375,24 +377,24 @@ Offload 的核心思想是利用 CPU 内存和 NVMe 存储作为 GPU 显存的�
 ```python
 class CPUOffloadOptimizer:
     """简化的 CPU Offload 优化器"""
-    
+
     def __init__(self, params, optimizer_class=torch.optim.Adam, **kwargs):
         self.params = list(params)
-        
+
         # 在 CPU 上创建参数副本和优化器
         self.cpu_params = [p.detach().cpu().requires_grad_(False) for p in self.params]
         self.optimizer = optimizer_class(self.cpu_params,** kwargs)
-    
+
     def step(self):
         """执行优化步骤，使用 CPU 计算"""
         # 将梯度复制到 CPU
         for gpu_param, cpu_param in zip(self.params, self.cpu_params):
             if gpu_param.grad is not None:
                 cpu_param.grad = gpu_param.grad.cpu()
-        
+
         # 在 CPU 上更新
         self.optimizer.step()
-        
+
         # 将更新后的参数复制回 GPU
         for gpu_param, cpu_param in zip(self.params, self.cpu_params):
             gpu_param.data.copy_(cpu_param.data)
@@ -401,24 +403,24 @@ class CPUOffloadOptimizer:
 def test_cpu_offload():
     if not torch.cuda.is_available():
         return
-        
+
     torch.cuda.empty_cache()
     analyzer = MemoryAnalyzer()
-    
+
     model = create_model().cuda()
     analyzer.record("模型创建后")
-    
+
     # 使用 CPU Offload 优化器
     optimizer = CPUOffloadOptimizer(model.parameters(), lr=1e-3)
     analyzer.record("CPU Offload 优化器创建后")
-    
+
     # 简单训练步骤
     inputs = torch.randn(32, 2048).cuda()
     outputs = model(inputs)
     loss = F.mse_loss(outputs, torch.randn_like(outputs))
     loss.backward()
     optimizer.step()
-    
+
     analyzer.record("训练一步后")
     return analyzer.memory_stats
 
@@ -441,17 +443,17 @@ CPU Offload 优化器创建后: 已分配: 0.13GB, 变化: +0.00GB
 def compare_methods():
     if not torch.cuda.is_available():
         return
-        
+
     print("\n 显存使用对比 (单位: GB):")
     print("-" * 40)
-    
+
     # 重新运行基础测试
     baseline = analyze_memory()
     zero1 = test_zero1()
     zero2 = test_zero2()
     zero3 = test_zero3()
     offload = test_cpu_offload()
-    
+
     # 提取最终显存使用量
     print(f"基础方法: {baseline['allocated'][-1]:.2f}GB")
     print(f"ZeRO-1: {zero1['allocated'][-1]:.2f}GB ({(1-zero1['allocated'][-1]/baseline['allocated'][-1])*100:.1f}% 节省)")
@@ -480,7 +482,7 @@ CPU Offload: 0.25GB (35.9% 节省)
 ZeRO 技术通过分片优化器状态、梯度和参数，显著降低了大模型训练的显存需求。本实验通过代码实现和原理分析，深入探讨了：
 
 1. **ZeRO-1**：优化器状态分片，减少约 4 倍显存占用
-2. **ZeRO-2**：梯度分片，进一步减少约 8 倍显存占用  
+2. **ZeRO-2**：梯度分片，进一步减少约 8 倍显存占用
 3. **ZeRO-3**：参数分片，最大可减少约 N 倍显存占用（N 为 GPU 数量）
 4. **Zero Offload**：将数据卸载到 CPU/NVMe，支持训练超大模型
 
