@@ -7,12 +7,12 @@
 ### 1.1 MTP在训练阶段作用
 MTP初衷是为了让LLM训练更高效。在传统LLM训练时，每一步只预测“下一个token”，而MTP则在每一步同时预测“接下来n个token”（比如一次预测3个），用多个独立的输出头并行计算。
 例如，Meta在2024年发表的论文《Better & Faster Large Language Models via Multi-token Prediction》中，于共享权重层后接入多个单独的输出头，在每一步并行预测多个token，提升了模型的长序列预测能力。
-![alt text](images/04ParallelSampling01.png)
+![alt text](./images/04ParallelSampling01.png)
 
 其中每个输出头的输入均为上一层的输出特征，彼此权重独立更新，旨在学习多个token间的通用知识。
-![alt text](images/04ParallelSampling02.png)
+![alt text](./images/04ParallelSampling02.png)
 在DeepSeek-V3技术报告中显示，其进一步优化了MTP模块结构，用“级联模块”保持前后token预测的逻辑连贯——每个模块基于前一个模块的输出预测下一个token，保持因果关系，避免了生成序列前后矛盾。目前开源的llm模型（例如Qwen3-Next、GLM-4.5），训练时都加了MTP模块以提升性能。
-![alt text](images/04ParallelSampling03.png)
+![alt text](./images/04ParallelSampling03.png)
 
 ### 1.2 MTP在推理阶段作用
 MTP在推理阶段存在较多限制:
