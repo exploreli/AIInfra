@@ -4,28 +4,46 @@
 
 > Author by: 杨涵智
 
-!!!!!!!!!业界没有所谓的!!!!长序列模型!!!!，只有大模型能够处理长序列，长序列作为一个特性。下面的内容都改，不要只听大模型的。
+!!!!!!!叹号的修改完就删掉
 
 !!!!!!!参考文章 https://zhuanlan.zhihu.com/p/698447429
 
-随着 AI 对长文本处理需求的提升，短序列模型因上下文截断的局限难以满足实际任务，!!!!长序列模型!!!!应运而生，却面临序列长度扩展带来的内存与效率瓶颈。传统并行技术难以针对性解决这一问题，为此，本节聚焦序列并行的进阶方案——上下文并行，系统阐述其基本原理、与传统技术的差异及核心优势，说明其如何支撑!!!!长序列模型!!!!高效落地。
+随着 AI 对长文本处理需求的提升，早期的短上下文大模型因上下文截断的局限难以满足实际任务，人们对大模型的长序列处理能力的需求水涨船高。然而，传统的并行技术难以针对性解决因序列长度扩展带来的内存与效率瓶颈问题。为此，本节聚焦序列并行的进阶方案——上下文并行，系统阐述其基本原理、与传统技术的差异及核心优势，说明其如何支撑大模型的长序列处理能力高效落地。
 
 ## 长序列出现
 
-!!!!长序列模型!!!!的兴起绝非偶然的技术迭代，而是伴随着人工智能向复杂真实场景渗透时，对长距离信息关联能力需求的必然产物。早起以 BERT、GPT-2 等 512 或 1024 token 窗口为代表的短序列模型虽然在简单任务中表现亮眼，但面对多轮复杂对话、文章理解等长序列场景时仍显得力不从心。上下文窗口的硬性限制，使得它们不得不对长文本进行截断，这直接导致了部分关键信息的丢失，使任务精度大幅度下降。以长文档摘要任务为例，短序列模型对跨段落核心观点的捕捉率甚至不能达到 50%，完全无法达到产业级应用的标准。
+大模型的长序列能力的爆发绝非偶然的技术迭代，而是伴随着人工智能向复杂真实场景渗透时，对长距离信息关联能力需求的必然产物。早起以 BERT、GPT-2 等 512 或 1024 token 窗口为代表的短上下文大模型虽然在简单任务中表现亮眼，但面对多轮复杂对话、文章理解等长序列场景时仍显得力不从心。上下文窗口的硬性限制，使得它们不得不对长文本进行截断，这直接导致了部分关键信息的丢失，使任务精度大幅度下降。以长文档摘要任务为例，短上下文大模型对跨段落核心观点的捕捉率甚至不能达到 50%，完全无法达到产业级应用的标准。
 
-鉴于短序列模型受限于上下文窗口，所以人们首先以突破固定的上下文窗口为核心方向。2019 年诞生的 Transformer-XL 就是这一阶段的代表性成果，并且成功证明了突破固定的上下文窗口对长序列建模的意义。Transformer-XL 的核心优化在于引入了以下两点：
+鉴于短上下文模型受限于上下文窗口，所以人们首先以突破固定的上下文窗口为核心方向。2019 年诞生的 Transformer-XL 就是这一阶段的代表性成果，并且成功证明了突破固定的上下文窗口对长序列建模的意义。Transformer-XL 的核心优化在于引入了以下两点：
 
-1. 片段级递归机制：这一机制的存在允许模型在处理新文本片段时，重用前一片段的隐藏状态，而非像传统 Transformer 那样每次从头计算；
-2. 相对位置编码：通过建模 token 间的相对距离，避免了绝对位置编码在长序列中位置溢出的问题。
+![](images/03.ContextParallelism06.png)
+<center>经典 Transformer 训练和评估阶段</center>
 
-但是随着需求场景的进一步升级，效率成为了!!!!长序列模型!!!!发展的新焦点。2023 年提出的 Mamba 跳出了 Transformer 架构的框架，基于状态空间模型设计了全新的长序列处理范式，引入线性复杂度计算。Mamba 的内部状态大小恒定，计算量随序列长度呈 O(N)线性增长，对比传统 Transformer 模型的 O(N<sup>2</sup>)，Mamba 在处理百万 token 级序列时，仍能保持高效的内存占用与计算速度。
+![](images/03.ContextParallelism07.png)
+<center>Transformer-XL 训练和评估阶段</center>
 
-以上两种模型均进行了架构创新，而基于 Transformer 的改进方案同样不断演进，其中极具代表性的就是 2020 年提出的 Longformer，通过滑动窗口注意力和全局注意力的混合机制，在保持 Transformer 架构兼容性的同时，将计算复杂度降至 O(N×w)，其中 w 为窗口大小。Longformer 既降低了计算成本，又确保了核心信息的全局关联。
+1. 片段递归：Transformer-XL 和 Transformer 相同点在于在训练时会以固定长度的片段进行输入，区别在于 Transformer-XL 会缓存上一片段的状态，重复使用上个时间片的隐层状态来计算当前片段。从图中可以直观地看出，在训练阶段，Transformer 前后片段是独立的，显然这与事实不符，而 Transformer-XL 缓存了前一个片段的输出序列，在计算下一个片段的输出时会使用上一个片段的缓存信息，将前后片段的信息进行融合。在评估阶段，Transformer 会采用同训练阶段一致的划分长度，仅预测最后一个位置的 token，完成后整体向后移动一位，但是这种方式需要频繁计算新的片段，计算代价很大；相对的，由于前后片段的重复度很高，Transformer-XL 选择直接使用前一个片段的输出序列，不需要重复计算，加快了推理速度。
+2. 相对位置编码：以往 Transformer 使用绝对位置编码，其计算方式如下：
 
-!!!!!!!!图，有图说话，上面几种模型的图，放在一起
+$$
+\left\{
+\begin{aligned}
+PE(pos, 2i) &= \sin\left( \frac{pos}{10000^{2i/d_{\text{model}}}} \right) \\
+PE(pos, 2i+1) &= \cos\left( \frac{pos}{10000^{2i/d_{\text{model}}}} \right)
+\end{aligned}
+\right.
+$$
 
-然而，!!!!长序列模型!!!!的发展始终面临着能力与资源的矛盾：序列长度的不断增加必然导致激活值和 KV 缓存的内存占用激增。传统的张量并行（Tensor Parallelism，TP）和流水线并行（Pipeline Parallelism，PP）主要解决参数存储问题，无法针对序列维度的并行压力提供有效优化；而序列并行（Sequence Parallelism，SP）虽然尝试查分序列，却因自注意力模块对完整 QKV 的依赖而效果有限。正是这一核心矛盾，催生了上下文并行（Context Parallelism，CP）的诞生。
+其中，pos 表示 token 的下标，$d_{\text{model}}$ 表示 hidden size，i 表示的是具体的某个维度。从公式中不难看出，绝对位置编码只能在同一片段中区分位置，在不同片段中的同一位置的编码是相同的。如果按照这个方式计算，前后两段在进行信息融合时会造成位置信息的混乱。为了避免这一情况，Transformer-XL 使用相对位置编码，通过计算当前 token 与其他 token 的相对距离，为不同相对位置分配特定的编码参数。这样一来，即便在不同片段中存在位置数值相同的 token，也能根据它们之间的相对位置差异，获得准确且有区分度的位置编码。
+
+但是随着需求场景的进一步升级，效率成为了大模型长序列特性发展的新焦点。2023 年提出的 Mamba 跳出了 Transformer 架构的框架，基于状态空间模型设计了全新的长序列处理范式，引入线性复杂度计算。Mamba 的内部状态大小恒定，计算量随序列长度呈 O(N)线性增长，对比传统 Transformer 模型的 O(N<sup>2</sup>)，Mamba 在处理百万 token 级序列时，仍能保持高效的内存占用与计算速度。
+
+以上两种模型均进行了架构创新，而基于 Transformer 的改进方案同样不断演进，其中极具代表性的就是 2020 年提出的 Longformer，通过滑动窗口注意力和全局注意力的混合机制，在保持 Transformer 架构兼容性的同时，将计算复杂度降至 O(N×w)，其中 w 为窗口大小。Longformer 既降低了计算成本，又确保了核心信息的全局关联。图中(a)是经典的 Self-Attention 模式，每个 token 都要和序列中其他所有的 token 交互，时间复杂度达到 O(N<sup>2</sup>)。(b)、(c)、(d)则是 Longformer 提出的三种 Self-Attention 模式，分别是滑动窗口注意力机制（Sliding Window Attention）、空洞滑窗机制（Dilated Sliding Window）和融合全局信息的滑动窗口机制（Global+Sliding Window）。由图中的数据我们可以很直观的看出 Longformer 在时间复杂度上做出的巨大优化。
+
+![](images/03.ContextParallelism08.png)
+<center>经典 Self-Attention 和 Longformer 提出的 Self-Attention</center>
+
+然而，大模型长序列能力的发展始终面临着能力与资源的矛盾：序列长度的不断增加必然导致激活值和 KV 缓存的内存占用激增。传统的张量并行（Tensor Parallelism，TP）和流水线并行（Pipeline Parallelism，PP）主要解决参数存储问题，无法针对序列维度的并行压力提供有效优化；而序列并行（Sequence Parallelism，SP）虽然尝试查分序列，却因自注意力模块对完整 QKV 的依赖而效果有限。正是这一核心矛盾，催生了上下文并行（Context Parallelism，CP）的诞生。
 
 ## CP 基本原理
 
@@ -42,6 +60,8 @@
 $$Attention(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
 
 SP 虽然能够拆分 LayerNorm、Dropout、全连接层等模块，但由于计算的耦合性，自注意力模块需要完整的 Q、K、V 才能计算，不能简单的拼接局部结果，这正是 SP 优化长序列的瓶颈——它的 QKV 计算依赖完整序列信息，限制了 SP 对长序列的并行优化能力。
+
+!!!!!!!!!!绘图，通过图来表示 CP 和 SP 的区别
 
 ### CP 并行原理与流程
 
@@ -107,7 +127,7 @@ CP 是 Megatron-LM 在 Ring-Attention 基础上的一次尝试，为模型面对
 ## 参考与引用
 
 - https://github.com/NVIDIA/Megatron-LM/blob/c3677e09aa4e2eec37048307bd795928b8f8324a/docs/source/api-guide/context_parallel.rst
-
+- https://blog.csdn.net/u012526436/article/details/109156096
+- https://zhuanlan.zhihu.com/p/405317918
 - Liu H, Zaharia M, Abbeel P. Ring attention with blockwise transformers for near-infinite context[J]. arXiv preprint arXiv:2310.01889, 2023.
-
 - Korthikanti V A, Casper J, Lym S, et al. Reducing activation recomputation in large transformer models[J]. Proceedings of Machine Learning and Systems, 2023, 5: 341-353.
