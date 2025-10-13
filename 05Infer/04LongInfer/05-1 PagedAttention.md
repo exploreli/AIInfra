@@ -10,7 +10,7 @@
 
 首先，LLM Infer 主要有`prefill`和`decode`两个阶段：
 
-![](./images/05-1LLM-Infer.png)
+![](./images/05-1-1 LLM-Infer.png)
 
 
 如图，不难观察到：
@@ -31,5 +31,7 @@
 
 类比传统的分页操作系统，PagedAttention 对于不同的 Request 正如对于不同进程一样分别分配进程块并且通过虚实转换机制映射到物理内存中实现分页管理。
 
-![](./images/05-2PagedAtten_2reqs.png)
+![](./images/05-1-2 PagedAtten_2reqs.png)
+
+如图，不同的request都可以被分页然后填充到需要的地方。
 
