@@ -2,7 +2,7 @@
 Author by: 汪袁烁
 
 
-*提示：如果你对于Prefill和Decode阶段还不是很了解，可以去看我的`./PD分离`，我在那里对于Prefill、Decode以及大模型推理框架中它们是如何运作的进行了一个简要介绍。*
+*提示：如果你对于 Prefill 和 Decode 阶段还不是很了解，可以去看我的`./PD 分离`，我在那里对于 Prefill、Decode 以及大模型推理框架中它们是如何运作的进行了一个简要介绍。*
 
 ## Introduction
 
@@ -63,5 +63,5 @@ DeepSpeed-FastGen 的目标是利用连续批处理和非连续 KV 缓存技术�
 3. [OpenLMAI 博客](https://openlm.ai/deepspeed-fastgen/)
 4. [DeepSeed 知乎](https://zhuanlan.zhihu.com/p/665494115)
 5. [PagedAttention 论文](https://arxiv.org/pdf/2309.06180)
-6. [关于PD分离](https://www.bilibili.com/video/BV1wcdbYwE6s?spm_id_from=333.788.videopod.sections&vd_source=8a4545c25a1c1192fb4e7e037876e6f4)
+6. [关于 PD 分离](https://www.bilibili.com/video/BV1wcdbYwE6s?spm_id_from=333.788.videopod.sections&vd_source=8a4545c25a1c1192fb4e7e037876e6f4)
 

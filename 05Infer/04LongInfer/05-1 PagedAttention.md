@@ -33,5 +33,5 @@
 
 ![](./images/05-1-2 PagedAtten_2reqs.png)
 
-如图，不同的request都可以被分页然后填充到需要的地方。
+如图，不同的 request 都可以被分页然后填充到需要的地方。
 
