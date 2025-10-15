@@ -1,6 +1,9 @@
 # FastGen
 Author by: 汪袁烁
 
+
+*提示：如果你对于 Prefill 和 Decode 阶段还不是很了解，可以去看我的`./PD 分离`，我在那里对于 Prefill、Decode 以及大模型推理框架中它们是如何运作的进行了一个简要介绍。*
+
 ## Introduction
 
 长提示工作负载变得越来越重要，而现有的 VLLM 等框架面临长提示词难以维持高质量的服务。此外，众所周知，LLM 的推理主要分为`prefill`（用户输入 prompt）和`decode`（LLM 输出 token）两个阶段，然而 `decode`的生成阶段往往会打断`prefill`阶段：
@@ -33,8 +36,6 @@ Author by: 汪袁烁
 
 之前我们说过，`decode`和`prefill`往往被视为两个阶段，这样往往造成负载不均，并且在面临长文本序列的输入时容易花费较长时间。而“Continuous batching”（连续批处理）则允许 请求 随时加入 / 离开 运行的 batch，而不是在 prompt 阶段与生成阶段严格分割、或者说先把所有 prompt 全部处理完才开始生成。也就是说批次是“动态流式”的，而不是静态预先构造。
 
-
-
 ## DeepSpeed-FastGen
 
 DeepSpeed-FastGen 的目标是利用连续批处理和非连续 KV 缓存技术，以提升数据中心服务大型语言模型（LLM）的硬件利用率和响应速度。
@@ -62,4 +63,5 @@ DeepSpeed-FastGen 的目标是利用连续批处理和非连续 KV 缓存技术�
 3. [OpenLMAI 博客](https://openlm.ai/deepspeed-fastgen/)
 4. [DeepSeed 知乎](https://zhuanlan.zhihu.com/p/665494115)
 5. [PagedAttention 论文](https://arxiv.org/pdf/2309.06180)
+6. [关于 PD 分离](https://www.bilibili.com/video/BV1wcdbYwE6s?spm_id_from=333.788.videopod.sections&vd_source=8a4545c25a1c1192fb4e7e037876e6f4)
 
